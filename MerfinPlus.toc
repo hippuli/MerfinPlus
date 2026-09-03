@@ -1,0 +1,109 @@
+## Interface: 20506
+## Title: MerfinPlus
+## Author: Merfin
+## Version: 2.92
+## X-Website: discord.gg/merfin
+## X-Flavor: TBC
+## Notes: Inserts Merfin media into LibSharedMedia's storage.
+## Notes-deDE: Fügt Merfin-Medien zur LibSharedMedia-Bibliothek hinzu.
+## Notes-frFR: Ajoute les médias Merfin au stockage de LibSharedMedia.
+## Notes-esES: Inserta los medios de Merfin en el almacenamiento de LibSharedMedia.
+## Notes-esMX: Inserta los medios de Merfin en el almacenamiento de LibSharedMedia.
+## Notes-itIT: Inserisce i media Merfin nella libreria LibSharedMedia.
+## Notes-ruRU: Добавляет медиафайлы Merfin в библиотеку LibSharedMedia.
+## Notes-koKR: Merfin 미디어를 LibSharedMedia 저장소에 추가합니다.
+## Notes-zhCN: 将 Merfin 媒体添加到 LibSharedMedia 库中。
+## Notes-zhTW: 將 Merfin 媒體加入 LibSharedMedia 資料庫。
+## Category: User Interface
+## Category-deDE: Benutzerinterface
+## Category-esES: Interfaz de usuario
+## Category-esMX: Interfaz de usuario
+## Category-frFR: Interface utilisateur
+## Category-itIT: Interfaccia utente
+## Category-koKR: 사용자 인터페이스
+## Category-ptBR: Interface do usuário
+## Category-ruRU: Интерфейс пользователя
+## Category-zhCN: 用户界面
+## Category-zhTW: 使用者介面
+## IconTexture: Interface\AddOns\MerfinPlus\Media\icons\merfinui_logo_2
+## SavedVariables: MerfinPlusSaved
+## OptionalDeps: LibStub, Ace3, LibSharedMedia-3.0, LibDeflate
+## DefaultState: Enabled
+## LoadOnDemand: 0
+## X-Curse-Project-ID: 918326
+## X-Wago-ID: bGoMEq60
+## AllowLoadGameType: tbc
+
+libs\libs.xml
+libs\json.lua\json.lua
+Localizations\locales_addon.lua
+MerfinPlus.lua
+Data\TBC_AuctionCatalog.lua
+Data\TBC_BossPlanAssetCatalog.lua
+Data\RaidAssignmentFontCatalog.lua
+Data\RaidCooldownData\TBC_RaidCooldownData.lua
+Data\RaidCooldownData\RaidCooldownTrackerRegistry.lua
+Data\RaidCooldownData\TBC_RaidCooldownTrackerData.lua
+Data\RaidCooldownData\TBC_RaidCooldownRendererCatalog.lua
+Data\RaidCooldownData\RaidCooldownTracker.lua
+Data\RaidAutoMarkerData\TBC_AutoMarkerData.lua
+Data\RaidAutoMarkerData\T5_AutoMarkerData.lua
+Media\MediaSettings.lua
+Options\Defaults.lua
+Localizations\CJK.lua
+Localizations\AutoMarkerNPCs.lua
+Localizations\RaidCooldownNames.lua
+Localizations\UI.lua
+Localizations\Content.lua
+Modernize.lua
+Options\UITheme.lua
+Options\ExportData.lua
+Options\RaidAssignmentMGMRA4Codec.lua
+Options\RaidAssignmentsData.lua
+WeakAuras_API\ArchimondeTremorAssignmentsBridge.lua
+WeakAuras_API\GurtoggAssignmentsBridge.lua
+WeakAuras_API\GurtoggManualSync.lua
+WeakAuras_API\InterruptAssignmentsBridge.lua
+WeakAuras_API\InterruptManualSync.lua
+WeakAuras_API\IllidanPhase2AssignmentsBridge.lua
+WeakAuras_API\IllidanPhase2ManualSync.lua
+Options\RaidAssignmentMFPProtocol.lua
+Options\RaidAssignmentBossPlanRenderer.lua
+Options\PreBossGroupsData.lua
+Options\AssignmentWidgets.lua
+Options\WoWSimDefaults_TBC.lua
+Options\WoWSimOptions.lua
+Options\MediaOptions.lua
+Options\AssignmentsOptions.lua
+Options\RaidCooldownOptions.lua
+Options\RaidCooldownTrackerOptions.lua
+Options\RaidAutoMarkerOptions.lua
+Options\ReadyCheck.lua
+Options\RaidPackOptions.lua
+Options\ExportOptions.lua
+Options\SUIWidgets\AceGUIContainer-MerfinPlusOptionsContent.lua
+Options\SUIWidgets\AceGUILayout-MerfinPlusNavList.lua
+Options\SUIWidgets\AceGUIWidget-MerfinPlusNavButton.lua
+Options\SUIWidgets\AceGUIWidget-MerfinPlusDropdown.lua
+Options\SUIWidgets\AceGUIWidgets-MerfinPlusExport.lua
+Options\SUIWidgets\AceGUIWidget-MerfinPlusRaidAssignments.lua
+Options\SUIWidgets\AceGUIWidget-MerfinPlusPreBossGroups.lua
+Options\SUIWidgets\AceGUIWidget-MerfinPlusRaidCooldownActivation.lua
+Options\SUIWidgets\AceGUIWidget-MerfinPlusReadyCheckPreview.lua
+Options.lua
+MinimapButton.lua
+Media\Media.xml
+WeakAuras_API\WeakAuras_API_TBC.xml
+Localizations\localizations.xml
+Data\FoodAndDrinkData\TBC_FoodAndDrinkData.lua
+Data\EquippedItemsData\TBC_EquippedItemsData.lua
+
+Localizations\TBC_BossLocales.lua
+Data\ItemDropData\TBC\TBC_ItemDrop_Data_LootSets.lua
+Data\ItemDropData\TBC\TBC_ItemDrop_Data_Faction.lua
+Data\ItemDropData\TBC\TBC_ItemDrop_Data_Collections.lua
+Data\ItemDropData\TBC\TBC_ItemDrop_Data_Vendor.lua
+Data\ItemDropData\TBC\TBC_ItemDrop_Data_Profession.lua
+Data\ItemDropData\TBC\TBC_ItemDrop_Data_TierTokens.lua
+Data\ItemDropData\TBC\TBC_ItemDrop_Data_InstanceTags.lua
+Data\ItemDropData\TBC\TBC_ItemDrop_Core.lua
