@@ -103,6 +103,19 @@ local voiceLineFileNames = {
     "Watch your feet",
     'Tank Phase',
     'Kite the boss',
+    "Check Tremors",
+    "Consecration soon",
+    "D n D soon",
+    "Deaden soon",
+    "Doom soon",
+    "Eye Blast soon",
+    "Fatal Attraction soon",
+    "Fel Rage soon",
+    "Inferno soon",
+    "Kite Phase Soon",
+    "Mark soon",
+    "Tank Phase Soon",
+    "Tidal Shield soon",
   },
   ruRU = {
     "1",
@@ -197,6 +210,20 @@ local voiceLineFileNames = {
     "Watery Globules",
     "Whirlwind",
     'TAB',
+    "Check Tremors",
+    "Consecration soon",
+    "D n D soon",
+    "Deaden soon",
+    "Doom soon",
+    "Eye Blast soon",
+    "Fatal Attraction soon",
+    "Fel Rage soon",
+    "Inferno soon",
+    "Kite Phase Soon",
+    "Kite the boss",
+    "Mark soon",
+    "Tank Phase Soon",
+    "Tidal Shield Soon",
   },
   zhCN = {
     "Behind",
@@ -231,7 +258,13 @@ internalSoundFileNames.Reminders = {
 local soundPaths = {}
 local mainPath = [[Interface\Addons\MerfinPlus\Media\sound]]
 local GetSoundPath = function(folderPath, soundFileName)
-  return stformat([[%s\%s\%s.mp3]], mainPath, folderPath, soundFileName)
+  local extension = "mp3"
+  if folderPath == "ruRU" and soundFileName == "Kite the boss" then
+    extension = "wav"
+  elseif folderPath == "enUS" and (soundFileName == "Spread" or soundFileName == "Taunt") then
+    extension = "mp3.mp3"
+  end
+  return stformat([[%s\%s\%s.%s]], mainPath, folderPath, soundFileName, extension)
 end
 
 local RegisterSounds = function(folderName, folderPath, RegisterLSM)

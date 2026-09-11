@@ -40,8 +40,8 @@
 -- end
 -- @class file
 -- @name AceDB-3.0.lua
--- @release $Id: AceDB-3.0.lua 1406 2026-09-03 04:12:17Z funkehdude $
-local ACEDB_MAJOR, ACEDB_MINOR = "AceDB-3.0", 34
+-- @release $Id: AceDB-3.0.lua 1364 2025-07-05 16:01:08Z nevcairiel $
+local ACEDB_MAJOR, ACEDB_MINOR = "AceDB-3.0", 33
 local AceDB = LibStub:NewLibrary(ACEDB_MAJOR, ACEDB_MINOR)
 
 if not AceDB then return end -- No upgrade needed
@@ -49,7 +49,6 @@ if not AceDB then return end -- No upgrade needed
 -- Lua APIs
 local type, pairs, next, error = type, pairs, next, error
 local setmetatable, rawset, rawget = setmetatable, rawset, rawget
-local strlenutf8 = strlenutf8
 
 -- WoW APIs
 local _G = _G
@@ -276,18 +275,6 @@ local function initdb(sv, defaults, defaultProfile, olddb, parent)
 		-- Make a container for profile keys
 		if not sv.profileKeys then sv.profileKeys = {} end
 
-		-- Validate any existing profile name
-		if sv.profileKeys[charKey] then
-			if type(sv.profileKeys[charKey]) ~= "string" then
-				sv.profileKeys[charKey] = defaultProfile or charKey
-			else
-				local profileNameLength = strlenutf8(sv.profileKeys[charKey])
-				if profileNameLength == 0 or profileNameLength > 30 then
-					sv.profileKeys[charKey] = defaultProfile or charKey
-				end
-			end
-		end
-
 		-- Try to get the profile selected from the char db
 		profileKey = sv.profileKeys[charKey] or defaultProfile or charKey
 
@@ -459,11 +446,6 @@ end
 function DBObjectLib:SetProfile(name)
 	if type(name) ~= "string" then
 		error(("Usage: AceDBObject:SetProfile(name): 'name' - string expected, got %q."):format(type(name)), 2)
-	else
-		local profileNameLength = strlenutf8(name)
-		if profileNameLength == 0 or profileNameLength > 30 then
-			error("Usage: AceDBObject:SetProfile(name): 'name' - string length must be between 1 and 30 characters.", 2)
-		end
 	end
 
 	-- changing to the same profile, dont do anything
@@ -795,15 +777,8 @@ function AceDB:New(tbl, defaults, defaultProfile)
 		error(("Usage: AceDB:New(tbl, defaults, defaultProfile): 'defaults' - table expected, got %q."):format(type(defaults)), 2)
 	end
 
-	if defaultProfile then
-		if type(defaultProfile) == "string" then
-			local profileNameLength = strlenutf8(defaultProfile)
-			if profileNameLength == 0 or profileNameLength > 30 then
-				error("Usage: AceDB:New(tbl, defaults, defaultProfile): 'defaultProfile' - string length must be between 1 and 30 characters.", 2)
-			end
-		elseif defaultProfile ~= true then
-			error(("Usage: AceDB:New(tbl, defaults, defaultProfile): 'defaultProfile' - string or true expected, got %q."):format(type(defaultProfile)), 2)
-		end
+	if defaultProfile and type(defaultProfile) ~= "string" and defaultProfile ~= true then
+		error(("Usage: AceDB:New(tbl, defaults, defaultProfile): 'defaultProfile' - string or true expected, got %q."):format(type(defaultProfile)), 2)
 	end
 
 	return initdb(tbl, defaults, defaultProfile)

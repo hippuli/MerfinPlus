@@ -5,7 +5,7 @@ local MerfinPlus = LibStub("AceAddon-3.0"):GetAddon("MerfinPlus")
 MerfinPlus.defaults = {
   profile = {
     minimapButton = {
-      angle = 225,
+      minimapPos = 225,
       showIcon = true,
     },
     pullStartTime = 0,
@@ -82,6 +82,7 @@ MerfinPlus.defaults = {
       showMerfinPlusColumn = true,
       showT5Column = true,
       showT6Column = true,
+      showT6AColumn = true,
       windowWidth = 940,
       windowHeight = 820,
       windowX = 0,
@@ -116,6 +117,7 @@ MerfinPlus.defaults = {
             Incinerate = { displayBar = false, displayTimeline = false },
           },
           ["605"] = {
+            ArcingSmash = { displayBar = false, displayTimeline = false, displayNameplate = true },
             BewilderingStrike = { displayBar = false, displayTimeline = false },
             FelAcidBreath = { displayBar = false, displayTimeline = false },
             Eject = { displayBar = false, displayTimeline = false },
@@ -130,6 +132,8 @@ MerfinPlus.defaults = {
             Flamestrike = { displayBar = false, displayTimeline = false },
           },
           ["609"] = {
+            Blaze = { displayBar = false, displayTimeline = false, displayNameplate = true },
+            FlameBlast = { displayBar = false, displayTimeline = false, displayNameplate = true },
             DarkBarrage = { displayBar = false, displayTimeline = false },
             FlameCrash = { displayBar = false, displayTimeline = false },
           },

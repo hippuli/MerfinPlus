@@ -134,8 +134,10 @@ function API.OnInit(aura_env)
     end
   end
 
-  aura_env.bigSpellName   = GetSpellInfo(aura_env.buffSpellIds[1])
-  aura_env.smallSpellName = GetSpellInfo(aura_env.buffSpellIds[2])
+  aura_env.bigSpellName = GetSpellInfo(aura_env.buffSpellIds[1])
+
+  local smallSpellId = aura_env.buffSpellIds[2]
+  aura_env.smallSpellName = smallSpellId and GetSpellInfo(smallSpellId) or nil
 
   Debug(aura_env, "OnInit", "big=", aura_env.bigSpellName or "nil", "small=", aura_env.smallSpellName or "nil")
 
@@ -297,11 +299,15 @@ function API.OnInit(aura_env)
       aura_env.bigSpellName
     )
 
-    local macro2 = string.format(
-      "/cast [@%s,exists,nodead,help] %s",
-      macroUnit,
-      aura_env.smallSpellName
-    )
+    -- Some reminders, such as Thorns, only provide a single spell.
+    local macro2
+    if aura_env.smallSpellName then
+      macro2 = string.format(
+        "/cast [@%s,exists,nodead,help] %s",
+        macroUnit,
+        aura_env.smallSpellName
+      )
+    end
 
     if aura_env._lastMacroUnit == macroUnit
     and aura_env.button:GetAttribute("macrotext1") == macro1
@@ -314,7 +320,7 @@ function API.OnInit(aura_env)
 
     aura_env.button:SetAttribute("type", "macro")
     aura_env.button:SetAttribute("type1", "macro")
-    aura_env.button:SetAttribute("type2", "macro")
+    aura_env.button:SetAttribute("type2", macro2 and "macro" or nil)
 
     aura_env.button:SetAttribute("macrotext1", macro1)
     aura_env.button:SetAttribute("macrotext2", macro2)

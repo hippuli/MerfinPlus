@@ -28,6 +28,7 @@ local raidCooldownCatalog = {
     { encounter = "604", id = "CrushingShadows", spell = 40243 },
     { encounter = "604", id = "Incinerate", spell = 40239 },
     { encounter = "604", id = "ShadowOfDeath", spell = 40251 },
+    { encounter = "605", id = "ArcingSmash", spell = 40599, supportsNameplate = true },
     { encounter = "605", id = "Berserk", name = "Berserk", icon = 136206 },
     { encounter = "605", id = "BewilderingStrike", spell = 40491 },
     { encounter = "605", id = "Bloodboil", spell = 42005 },
@@ -61,6 +62,8 @@ local raidCooldownCatalog = {
     { encounter = "608", id = "VanishEnd", name = "Vanish End", spell = 41476 },
     { encounter = "609", id = "Berserk", name = "Berserk", icon = 136206 },
     { encounter = "609", id = "AgonizingFlames", spell = 40932 },
+    { encounter = "609", id = "Blaze", spell = 40609, supportsNameplate = true },
+    { encounter = "609", id = "FlameBlast", spell = 40631, supportsNameplate = true },
     { encounter = "609", id = "DarkBarrage", spell = 40585 },
     { encounter = "609", id = "DemonForm", name = "Demon Form", icon = 136172 },
     { encounter = "609", id = "DrawSoul", spell = 40904 },
@@ -313,7 +316,7 @@ local function BuildEncounterCooldownOptions(raidKey, encounterID)
     }
     args[prefix .. "DisplayNameplate"] = {
       type = "toggle", name = L["Display on Nameplates"], order = order + 3, width = 1.2,
-      hidden = not (cooldown.id and cooldown.id:find("Cleave", 1, true)),
+      hidden = not (cooldown.supportsNameplate or (cooldown.id and cooldown.id:find("Cleave", 1, true))),
       disabled = Disabled,
       get = function() return Settings(cooldown).displayNameplate ~= false end,
       set = function(_, value) Settings(cooldown).displayNameplate = value; NotifyChanged() end,
@@ -342,6 +345,9 @@ local function BuildEncounterCooldownOptions(raidKey, encounterID)
       disabled = function() return Disabled() or not Settings(cooldown).enabledCustom end,
       get = function() return Settings(cooldown).customName or "" end,
       set = function(_, value) Settings(cooldown).customName = value; NotifyChanged() end,
+    }
+    args[prefix .. "Spacer"] = {
+      type = "description", name = " ", order = order + 8, width = "full",
     }
   end
 
@@ -511,6 +517,10 @@ local function BuildTrashCooldownOptions(raidKey, encounterID)
         disabled = function() return Disabled() or not Settings(cooldown).enabledCustom end,
         get = function() return Settings(cooldown).customName or "" end,
         set = function(_, value) Settings(cooldown).customName = value; NotifyChanged() end,
+      }
+      args[prefix .. "Spacer"] = {
+        type = "description", name = " ", order = order + 8, width = "full",
+        hidden = Hidden,
       }
     end
   end

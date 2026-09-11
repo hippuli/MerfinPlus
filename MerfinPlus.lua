@@ -133,7 +133,7 @@ function MerfinPlus:GetCapabilities()
     mediaOptions = type(self.BuildMediaOptions) == "function",
     wowSimOptions = type(self.BuildWoWSimOptions) == "function",
     raidPackOptions = type(self.BuildRaidPackOptions) == "function",
-    export = isTBC
+    export = (isTBC or isMoP)
       and type(self.BuildExportOptions) == "function"
       and type(self.InitializeExportTracking) == "function",
     raidAssignments = (isTBC or isMoP) and type(self.InitializeRaidAssignments) == "function",

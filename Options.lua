@@ -1085,6 +1085,49 @@ local function GuardStandaloneInsetRoot(root)
   root.merfinPlusInsetRootGuarded = true
 end
 
+local function GetStandaloneWidgetPath(widget)
+  local current = widget
+  while current do
+    if current.GetUserData then
+      local path = current:GetUserData("path") or current:GetUserData("basepath")
+      if type(path) == "table" and #path > 0 then
+        return path
+      end
+    end
+    current = current.merfinPlusInsetParent
+  end
+end
+
+local function IsStandaloneSection(widget, sectionKey)
+  local path = GetStandaloneWidgetPath(widget)
+  return path and path[1] == sectionKey or false
+end
+
+local function IsRaidSettingsCooldownRaidContainer(widget)
+  local path = GetStandaloneWidgetPath(widget)
+  return path
+    and path[1] == "raidPack"
+    and path[2] == "cooldowns"
+    and path[3] == "raids"
+    or false
+end
+
+local function WidenRaidCooldownBossTree(widget)
+  if
+    not widget
+    or not IsRaidSettingsCooldownRaidContainer(widget)
+    or type(widget.GetTreeWidth) ~= "function"
+    or type(widget.SetTreeWidth) ~= "function"
+  then
+    return
+  end
+
+  local currentWidth = tonumber(widget:GetTreeWidth()) or 0
+  if currentWidth < 240 then
+    widget:SetTreeWidth(240, false)
+  end
+end
+
 local function MakeStandaloneInsetTransparent(widget, frame, showBorder)
   if not frame or not frame.SetBackdropColor then
     return
@@ -1217,6 +1260,7 @@ local function GuardStandaloneInsetWidget(widget, root)
     self.merfinPlusOriginalInsetOnRelease = nil
     self.merfinPlusInsetReleaseGuarded = nil
     self.merfinPlusInsetRoot = nil
+    self.merfinPlusInsetParent = nil
     self.OnRelease = release
     if release then
       return release(self, ...)
@@ -1230,7 +1274,10 @@ local function GuardStandaloneInsetWidget(widget, root)
     widget.AddChild = function(self, ...)
       local child = ...
       local result = AddChild(self, ...)
-      if child then ApplyStandaloneInsetBackdrops(child, root) end
+      if child then
+        child.merfinPlusInsetParent = self
+        ApplyStandaloneInsetBackdrops(child, root)
+      end
       return result
     end
   end
@@ -1474,14 +1521,19 @@ ApplyStandaloneInsetBackdrops = function(widget, root)
     SetStandaloneVertexColor(widget, widget.image, theme.accentBright, 1)
   elseif widget.type == "InlineGroup" then
     SetStandaloneTextColor(widget, widget.titletext, theme.accentBright)
-    MakeStandaloneInsetTransparent(widget, widget.content and widget.content:GetParent())
+    local hideBorder = IsStandaloneSection(widget, "assignments")
+      or IsStandaloneSection(widget, "raidCooldowns")
+    MakeStandaloneInsetTransparent(widget, widget.content and widget.content:GetParent(), not hideBorder)
     GuardStandaloneInsetWidget(widget, root)
   elseif widget.type == "TreeGroup" then
-    MakeStandaloneInsetTransparent(widget, widget.treeframe)
-    MakeStandaloneInsetTransparent(widget, widget.border)
+    local hideBorder = IsRaidSettingsCooldownRaidContainer(widget)
+    MakeStandaloneInsetTransparent(widget, widget.treeframe, not hideBorder)
+    MakeStandaloneInsetTransparent(widget, widget.border, not hideBorder)
+    WidenRaidCooldownBossTree(widget)
     GuardStandaloneInsetWidget(widget, root)
   elseif widget.type == "DropdownGroup" then
-    MakeStandaloneInsetTransparent(widget, widget.border)
+    local hideBorder = IsRaidSettingsCooldownRaidContainer(widget)
+    MakeStandaloneInsetTransparent(widget, widget.border, not hideBorder)
     SetStandaloneTextColor(widget, widget.titletext, theme.accentBright)
     GuardStandaloneInsetWidget(widget, root)
   end
@@ -2109,6 +2161,7 @@ function MerfinPlus:SetupOptions()
     if self.RefreshRaidAutoMarkerTheme then self:RefreshRaidAutoMarkerTheme() end
     if self.RefreshAssignmentWidgetTheme then self:RefreshAssignmentWidgetTheme() end
     if self.RefreshBossPlanTheme then self:RefreshBossPlanTheme() end
+    if self.RefreshCompanionBridgeTheme then self:RefreshCompanionBridgeTheme() end
 
     if not wasShown then return end
     local viewState = GetStoredViewState()

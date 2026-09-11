@@ -16,9 +16,41 @@ local TEXT = { 1.00, 0.96, 0.84, 1 }
 local MUTED = { 0.76, 0.70, 0.58, 1 }
 local BUTTON_BG = { 0.19, 0.15, 0.05, 0.98 }
 local BUTTON_HOVER = { 0.32, 0.25, 0.08, 0.98 }
-local LOGO_TEXTURE = "Interface\\AddOns\\MerfinPlus\\Media\\icons\\merfin-gchroma-256.png"
+local LOGO_TEXTURE = "Interface\\AddOns\\MerfinPlus\\Media\\options\\merfin_watermark.png"
+local LOGO_BORDER_TEXTURE = "Interface\\AddOns\\MerfinPlus\\Media\\icons\\header_logo_border.tga"
+local BACKDROP_TEXTURE = "Interface\\AddOns\\MerfinPlus\\Media\\options\\merfinplus_backdrop.png"
 local MERFIN_FONT_1_FALLBACK = "Interface\\AddOns\\MerfinPlus\\Media\\font\\SFUIDisplayCondensed-Semibold.otf"
 local SIGNATURE_FONT_FALLBACK = "Interface\\AddOns\\MerfinPlus\\Media\\font\\Caveat-SemiBold.ttf"
+
+local FALLBACK_THEME = {
+  backdropAlpha = 0,
+  headerAsset = false,
+  headerTextureAlpha = 0,
+  canvas = PANEL,
+  shell = PANEL,
+  surface = PANEL_ROW,
+  surfaceRaised = BUTTON_BG,
+  hover = BUTTON_HOVER,
+  accent = GOLD,
+  accentBright = GOLD,
+  accentSoft = GOLD_SOFT,
+  border = GOLD_SOFT,
+  borderSoft = GOLD_SOFT,
+  text = TEXT,
+  muted = MUTED,
+  good = GREEN,
+  red = RED,
+}
+
+local function getMerfinPlus()
+  local ace = LibStub and LibStub("AceAddon-3.0", true)
+  return ace and ace.GetAddon and ace:GetAddon("MerfinPlus", true)
+end
+
+local function currentTheme()
+  local addon = getMerfinPlus()
+  return addon and addon.UITheme or FALLBACK_THEME
+end
 
 local function resolveMerfinFont()
   local lsm = LibStub and LibStub("LibSharedMedia-3.0", true)
@@ -274,7 +306,11 @@ local function colorText(text, color)
 end
 
 local function printBridge(message, color)
-  DEFAULT_CHAT_FRAME:AddMessage(colorText("MerfinPlus WA Updates: ", GOLD) .. colorText(message, color or TEXT))
+  local theme = currentTheme()
+  DEFAULT_CHAT_FRAME:AddMessage(
+    colorText("MerfinPlus WA Updates: ", theme.accent or GOLD)
+      .. colorText(message, color or theme.text or TEXT)
+  )
 end
 
 local function activeRoot()
@@ -761,6 +797,102 @@ local function applyBackdrop(frame, bg, border)
   frame:SetBackdropBorderColor(border[1], border[2], border[3], border[4] or 1)
 end
 
+local function updateCoverCrop(texture, width, height, sourceAspect, rightWeighted)
+  width = tonumber(width) or 1
+  height = tonumber(height) or 1
+  if width <= 0 or height <= 0 then
+    return
+  end
+
+  local targetAspect = width / height
+  if targetAspect < sourceAspect then
+    local visibleWidth = targetAspect / sourceAspect
+    local left = rightWeighted and (1 - visibleWidth) or ((1 - visibleWidth) * 0.5)
+    texture:SetTexCoord(left, left + visibleWidth, 0, 1)
+  else
+    local visibleHeight = sourceAspect / targetAspect
+    local inset = (1 - visibleHeight) * 0.5
+    texture:SetTexCoord(0, 1, inset, 1 - inset)
+  end
+end
+
+local function refreshThemeLayers(frame)
+  if not frame then
+    return
+  end
+
+  local theme = currentTheme()
+  applyBackdrop(frame, theme.canvas or PANEL, theme.border or GOLD_SOFT)
+
+  if frame.themeBackdrop then
+    frame.themeBackdrop:SetAlpha(theme.backdropAlpha or 0)
+  end
+  if frame.themeHeader then
+    applyBackdrop(frame.themeHeader, theme.shell or PANEL, theme.border or GOLD_SOFT)
+  end
+  if frame.themeFooter then
+    applyBackdrop(frame.themeFooter, theme.shell or PANEL, theme.border or GOLD_SOFT)
+  end
+  if frame.themeHeaderTexture then
+    if type(theme.headerAsset) == "string" and theme.headerAsset ~= "" then
+      frame.themeHeaderTexture:SetTexture(theme.headerAsset)
+      frame.themeHeaderTexture:SetVertexColor(1, 1, 1, 1)
+      frame.themeHeaderTexture:SetAlpha(theme.headerTextureAlpha or 0.44)
+      frame.themeHeaderTexture:Show()
+      updateCoverCrop(
+        frame.themeHeaderTexture,
+        frame.themeHeader and frame.themeHeader:GetWidth(),
+        frame.themeHeader and frame.themeHeader:GetHeight(),
+        16,
+        true
+      )
+    else
+      frame.themeHeaderTexture:SetAlpha(0)
+      frame.themeHeaderTexture:Hide()
+    end
+  end
+end
+
+local function createThemeLayers(frame, headerHeight, footerHeight)
+  local template = BackdropTemplateMixin and "BackdropTemplate" or nil
+
+  local backdrop = frame:CreateTexture(nil, "BACKGROUND", nil, -8)
+  backdrop:SetTexture(BACKDROP_TEXTURE)
+  backdrop:SetAllPoints(frame)
+  backdrop:SetVertexColor(0.82, 0.78, 0.94, 1)
+  frame.themeBackdrop = backdrop
+
+  local header = CreateFrame("Frame", nil, frame, template)
+  header:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
+  header:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
+  header:SetHeight(headerHeight)
+  header:SetFrameLevel(frame:GetFrameLevel() + 1)
+  frame.themeHeader = header
+
+  local headerTexture = header:CreateTexture(nil, "BACKGROUND", nil, 2)
+  headerTexture:SetAllPoints(header)
+  frame.themeHeaderTexture = headerTexture
+  header:HookScript("OnSizeChanged", function(_, width, height)
+    updateCoverCrop(headerTexture, width, height, 16, true)
+  end)
+
+  if footerHeight and footerHeight > 0 then
+    local footer = CreateFrame("Frame", nil, frame, template)
+    footer:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
+    footer:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
+    footer:SetHeight(footerHeight)
+    footer:SetFrameLevel(frame:GetFrameLevel() + 1)
+    frame.themeFooter = footer
+  end
+
+  frame:HookScript("OnSizeChanged", function(_, width, height)
+    updateCoverCrop(backdrop, width, height, 16 / 9, false)
+  end)
+  updateCoverCrop(backdrop, frame:GetWidth(), frame:GetHeight(), 16 / 9, false)
+  refreshThemeLayers(frame)
+  return header, frame.themeFooter
+end
+
 local function setTextColor(fontString, color)
   fontString:SetTextColor(color[1], color[2], color[3], color[4] or 1)
 end
@@ -769,38 +901,55 @@ local function styleText(fontString, size, color, flags)
   if not fontString:SetFont(resolveMerfinFont(), size, flags or "") then
     fontString:SetFont(STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF", size, flags or "")
   end
-  setTextColor(fontString, color or TEXT)
+  setTextColor(fontString, color or currentTheme().text or TEXT)
 end
 
 local function styleSignatureText(fontString, size)
   if not fontString:SetFont(resolveSignatureFont(), size, "") then
-    styleText(fontString, size, GOLD, "")
+    styleText(fontString, size, currentTheme().accentBright or GOLD, "")
     return
   end
-  setTextColor(fontString, { 1.00, 0.86, 0.48, 0.92 })
+  setTextColor(fontString, currentTheme().accentSoft or GOLD_SOFT)
+end
+
+local function refreshBridgeButton(button)
+  if not button then
+    return
+  end
+
+  local theme = currentTheme()
+  local background = button.bridgeHovered and (theme.hover or BUTTON_HOVER)
+    or (theme.surfaceRaised or BUTTON_BG)
+  local border = button.bridgeHovered and (theme.accent or GOLD)
+    or (theme.border or GOLD_SOFT)
+  applyBackdrop(button, background, border)
+  setTextColor(button.label, theme.accentBright or GOLD)
 end
 
 local function createBridgeButton(parent, width, height)
   local template = BackdropTemplateMixin and "BackdropTemplate" or nil
   local button = CreateFrame("Button", nil, parent, template)
   button:SetSize(width, height)
-  applyBackdrop(button, BUTTON_BG, GOLD_SOFT)
 
   button.label = button:CreateFontString(nil, "OVERLAY")
   button.label:SetPoint("CENTER", button, "CENTER", 0, 1)
   button.label:SetJustifyH("CENTER")
-  styleText(button.label, 12, GOLD, "")
+  styleText(button.label, 12, currentTheme().accentBright or GOLD, "")
 
   button.SetText = function(self, text)
     self.label:SetText(text or "")
   end
 
   button:SetScript("OnEnter", function(self)
-    applyBackdrop(self, BUTTON_HOVER, GOLD)
+    self.bridgeHovered = true
+    refreshBridgeButton(self)
   end)
   button:SetScript("OnLeave", function(self)
-    applyBackdrop(self, BUTTON_BG, GOLD_SOFT)
+    self.bridgeHovered = false
+    refreshBridgeButton(self)
   end)
+  button.RefreshTheme = refreshBridgeButton
+  refreshBridgeButton(button)
 
   return button
 end
@@ -809,17 +958,36 @@ local function createAnimatedLogo(parent, size, glowSize)
   local holder = CreateFrame("Frame", nil, parent)
   holder:SetSize(size, size)
 
-  local logoGlow = holder:CreateTexture(nil, "ARTWORK")
-  logoGlow:SetTexture(LOGO_TEXTURE)
+  local logoGlow = holder:CreateTexture(nil, "ARTWORK", nil, 1)
+  logoGlow:SetTexture(LOGO_BORDER_TEXTURE)
+  if logoGlow.SetDesaturated then
+    logoGlow:SetDesaturated(true)
+  end
   logoGlow:SetBlendMode("ADD")
   logoGlow:SetAlpha(0)
   logoGlow:SetSize(glowSize, glowSize)
   logoGlow:SetPoint("CENTER", holder, "CENTER", 0, 0)
 
-  local logo = holder:CreateTexture(nil, "ARTWORK")
+  local logoBorder = holder:CreateTexture(nil, "ARTWORK", nil, 2)
+  logoBorder:SetTexture(LOGO_BORDER_TEXTURE)
+  if logoBorder.SetDesaturated then
+    logoBorder:SetDesaturated(true)
+  end
+  logoBorder:SetSize(size, size)
+  logoBorder:SetPoint("CENTER", holder, "CENTER", 0, 0)
+
+  local logo = holder:CreateTexture(nil, "OVERLAY", nil, 3)
   logo:SetTexture(LOGO_TEXTURE)
-  logo:SetSize(size, size)
+  logo:SetVertexColor(1, 1, 1, 1)
+  logo:SetSize(size * 0.79, size * 0.79)
   logo:SetPoint("CENTER", holder, "CENTER", 0, 0)
+
+  local function refreshLogoTheme()
+    local theme = currentTheme()
+    local accent = theme.accent or GOLD
+    logoBorder:SetVertexColor(accent[1], accent[2], accent[3], 1)
+    logoGlow:SetVertexColor(accent[1], accent[2], accent[3], 1)
+  end
 
   local function updateLogoAnimation()
     local now = GetTime and GetTime() or 0
@@ -837,16 +1005,21 @@ local function createAnimatedLogo(parent, size, glowSize)
       glowAlpha = 0.58 * math.sin(eased * math.pi)
     end
 
-    logo:SetSize(size * scaleX, size)
+    logo:SetSize(size * 0.79 * scaleX, size * 0.79)
     logo:SetTexCoord(mirrored and 1 or 0, mirrored and 0 or 1, 0, 1)
+    logoBorder:SetSize(size * scaleX, size)
+    logoBorder:SetTexCoord(mirrored and 1 or 0, mirrored and 0 or 1, 0, 1)
     logoGlow:SetSize(glowSize * scaleX, glowSize)
     logoGlow:SetTexCoord(mirrored and 1 or 0, mirrored and 0 or 1, 0, 1)
     logoGlow:SetAlpha(glowAlpha)
   end
 
   holder:SetScript("OnUpdate", updateLogoAnimation)
+  holder.RefreshTheme = refreshLogoTheme
+  refreshLogoTheme()
   updateLogoAnimation()
   holder.logo = logo
+  holder.logoBorder = logoBorder
   holder.logoGlow = logoGlow
   return holder
 end
@@ -876,24 +1049,24 @@ end
 
 function BRIDGE:OpenAura(aura, row)
   if not aura or not aura.encoded then
-    printBridge(T("missingPayload"), RED)
+    printBridge(T("missingPayload"), currentTheme().red or RED)
     return
   end
 
   if InCombatLockdown and InCombatLockdown() then
-    printBridge(T("leaveCombat"), RED)
+    printBridge(T("leaveCombat"), currentTheme().red or RED)
     return
   end
 
   if not ensureWeakAurasImport() then
-    printBridge(T("importUnavailable"), RED)
+    printBridge(T("importUnavailable"), currentTheme().red or RED)
     return
   end
 
   self:MarkOpened(aura)
   if row and row.status then
     row.status:SetText(T("opened"))
-    setTextColor(row.status, GREEN)
+    setTextColor(row.status, currentTheme().good or GREEN)
   end
   if row and row.button then
     row.button:SetText(T("openAgain"))
@@ -917,19 +1090,18 @@ function BRIDGE:CreateReadMeFrame()
   frame:RegisterForDrag("LeftButton")
   frame:SetScript("OnDragStart", frame.StartMoving)
   frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
-  applyBackdrop(frame, PANEL, GOLD_SOFT)
+  local theme = currentTheme()
+  applyBackdrop(frame, theme.canvas or PANEL, theme.border or GOLD_SOFT)
 
-  local header = CreateFrame("Frame", nil, frame)
-  header:SetSize(250, 52)
-  header:SetPoint("TOP", frame, "TOP", 0, -22)
+  local header = createThemeLayers(frame, 76, 58)
 
   local logoHolder = createAnimatedLogo(header, 46, 56)
-  logoHolder:SetPoint("LEFT", header, "LEFT", 0, 0)
+  logoHolder:SetPoint("LEFT", header, "LEFT", 18, 0)
   frame.readMeLogoHolder = logoHolder
 
   local title = header:CreateFontString(nil, "OVERLAY")
   title:SetPoint("LEFT", logoHolder, "RIGHT", 12, 1)
-  title:SetPoint("RIGHT", header, "RIGHT", 0, 0)
+  title:SetPoint("RIGHT", header, "RIGHT", -24, 0)
   title:SetJustifyH("LEFT")
   styleText(title, 24, TEXT, "")
   frame.readMeTitle = title
@@ -953,6 +1125,9 @@ function BRIDGE:CreateReadMeFrame()
   frame.readMeClose = close
 
   frame:Hide()
+  frame:SetScript("OnShow", function()
+    BRIDGE:RefreshTheme()
+  end)
   self.readMeFrame = frame
   return frame
 end
@@ -965,6 +1140,7 @@ function BRIDGE:RefreshReadMeFrame()
   self.readMeFrame.readMeTitle:SetText(T("readMeTitle"))
   self.readMeFrame.readMeBody:SetText(T("readMeText"))
   self.readMeFrame.readMeClose:SetText(T("readMeClose"))
+  self:RefreshTheme()
 end
 
 function BRIDGE:ShowReadMe()
@@ -988,53 +1164,18 @@ function BRIDGE:CreateFrame()
   frame:RegisterForDrag("LeftButton")
   frame:SetScript("OnDragStart", frame.StartMoving)
   frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
-  applyBackdrop(frame, PANEL, GOLD_SOFT)
+  local theme = currentTheme()
+  applyBackdrop(frame, theme.canvas or PANEL, theme.border or GOLD_SOFT)
 
-  local logoHolder = CreateFrame("Frame", nil, frame)
-  logoHolder:SetSize(50, 50)
-  logoHolder:SetPoint("TOPLEFT", 19, -15)
+  local header = createThemeLayers(frame, 76, 56)
+
+  local logoHolder = createAnimatedLogo(header, 50, 60)
+  logoHolder:SetPoint("LEFT", header, "LEFT", 18, 0)
   frame.logoHolder = logoHolder
+  frame.logo = logoHolder.logo
+  frame.logoGlow = logoHolder.logoGlow
 
-  local logoGlow = logoHolder:CreateTexture(nil, "ARTWORK")
-  logoGlow:SetTexture(LOGO_TEXTURE)
-  logoGlow:SetBlendMode("ADD")
-  logoGlow:SetAlpha(0)
-  logoGlow:SetSize(60, 60)
-  logoGlow:SetPoint("CENTER", logoHolder, "CENTER", 0, 0)
-  frame.logoGlow = logoGlow
-
-  local logo = logoHolder:CreateTexture(nil, "ARTWORK")
-  logo:SetTexture(LOGO_TEXTURE)
-  logo:SetSize(50, 50)
-  logo:SetPoint("CENTER", logoHolder, "CENTER", 0, 0)
-  frame.logo = logo
-
-  local function updateLogoAnimation()
-    local now = GetTime and GetTime() or 0
-    local cycle = (now % 7) / 7
-    local scaleX = 1
-    local mirrored = false
-    local glowAlpha = 0
-
-    if cycle >= 0.42 and cycle <= 0.58 then
-      local progress = (cycle - 0.42) / 0.16
-      local eased = progress * progress * (3 - 2 * progress)
-      local cosine = math.cos(eased * math.pi * 2)
-      scaleX = math.max(0.08, math.abs(cosine))
-      mirrored = cosine < 0
-      glowAlpha = 0.58 * math.sin(eased * math.pi)
-    end
-
-    logo:SetSize(50 * scaleX, 50)
-    logo:SetTexCoord(mirrored and 1 or 0, mirrored and 0 or 1, 0, 1)
-    logoGlow:SetSize(60 * scaleX, 60)
-    logoGlow:SetTexCoord(mirrored and 1 or 0, mirrored and 0 or 1, 0, 1)
-    logoGlow:SetAlpha(glowAlpha)
-  end
-  logoHolder:SetScript("OnUpdate", updateLogoAnimation)
-  updateLogoAnimation()
-
-  local title = frame:CreateFontString(nil, "OVERLAY")
+  local title = header:CreateFontString(nil, "OVERLAY")
   title:SetPoint("LEFT", logoHolder, "RIGHT", 12, 1)
   title:SetWidth(325)
   title:SetJustifyH("LEFT")
@@ -1042,16 +1183,16 @@ function BRIDGE:CreateFrame()
   title:SetText("MerfinUI WeakAura Updates")
   frame.title = title
 
-  local closeButton = createBridgeButton(frame, 32, 26)
-  closeButton:SetPoint("TOPRIGHT", -16, -14)
+  local closeButton = createBridgeButton(header, 32, 26)
+  closeButton:SetPoint("RIGHT", header, "RIGHT", -16, 0)
   closeButton:SetText("X")
   closeButton:SetScript("OnClick", function()
     frame:Hide()
   end)
   frame.closeButton = closeButton
 
-  local signature = frame:CreateFontString(nil, "OVERLAY")
-  signature:SetPoint("TOPRIGHT", title, "BOTTOMRIGHT", 0, -3)
+  local signature = header:CreateFontString(nil, "OVERLAY")
+  signature:SetPoint("BOTTOMRIGHT", header, "BOTTOMRIGHT", -58, 9)
   signature:SetWidth(220)
   signature:SetJustifyH("CENTER")
   styleSignatureText(signature, 16)
@@ -1130,6 +1271,9 @@ function BRIDGE:CreateFrame()
   frame.readMe = readMe
 
   frame:Hide()
+  frame:SetScript("OnShow", function()
+    BRIDGE:RefreshTheme()
+  end)
   self.frame = frame
   return frame
 end
@@ -1145,31 +1289,77 @@ function BRIDGE:CreateRow(parent, index)
   local template = BackdropTemplateMixin and "BackdropTemplate" or nil
   local row = CreateFrame("Frame", nil, parent, template)
   row:SetSize(700, 78)
-  applyBackdrop(row, PANEL_ROW, GOLD_SOFT)
+  local theme = currentTheme()
+  applyBackdrop(row, theme.surface or PANEL_ROW, theme.borderSoft or GOLD_SOFT)
 
   row.name = row:CreateFontString(nil, "OVERLAY")
   row.name:SetPoint("TOPLEFT", 14, -11)
   row.name:SetPoint("RIGHT", -148, 0)
   row.name:SetJustifyH("LEFT")
-  styleText(row.name, 15, TEXT, "")
+  styleText(row.name, 15, theme.text or TEXT, "")
 
   row.meta = row:CreateFontString(nil, "OVERLAY")
   row.meta:SetPoint("TOPLEFT", row.name, "BOTTOMLEFT", 0, -4)
   row.meta:SetPoint("RIGHT", -148, 0)
   row.meta:SetJustifyH("LEFT")
-  styleText(row.meta, 12, MUTED, "")
+  styleText(row.meta, 12, theme.muted or MUTED, "")
 
   row.status = row:CreateFontString(nil, "OVERLAY")
   row.status:SetPoint("TOPLEFT", row.meta, "BOTTOMLEFT", 0, -6)
   row.status:SetPoint("RIGHT", -148, 0)
   row.status:SetJustifyH("LEFT")
-  styleText(row.status, 12, GREEN, "")
+  styleText(row.status, 12, theme.good or GREEN, "")
 
   row.button = createBridgeButton(row, 112, 30)
   row.button:SetPoint("RIGHT", -16, 0)
 
   self.frame.rows[index] = row
   return row
+end
+
+function BRIDGE:RefreshTheme()
+  local theme = currentTheme()
+  local addon = getMerfinPlus()
+
+  if self.frame then
+    local frame = self.frame
+    refreshThemeLayers(frame)
+    if frame.logoHolder and frame.logoHolder.RefreshTheme then
+      frame.logoHolder:RefreshTheme()
+    end
+    if frame.title then setTextColor(frame.title, theme.text or TEXT) end
+    if frame.signature then setTextColor(frame.signature, theme.accentSoft or GOLD_SOFT) end
+    if frame.count then setTextColor(frame.count, theme.accentBright or GOLD) end
+    for _, button in ipairs({ frame.closeButton, frame.reload, frame.readMe }) do
+      if button and button.RefreshTheme then button:RefreshTheme() end
+    end
+    for _, row in ipairs(frame.rows or {}) do
+      applyBackdrop(row, theme.surface or PANEL_ROW, theme.borderSoft or GOLD_SOFT)
+      setTextColor(row.name, theme.text or TEXT)
+      setTextColor(row.meta, theme.muted or MUTED)
+      setTextColor(row.status, theme.good or GREEN)
+      if row.button and row.button.RefreshTheme then row.button:RefreshTheme() end
+    end
+    if addon and addon.ApplyUIFontSizeDelta then
+      addon:ApplyUIFontSizeDelta(frame)
+    end
+  end
+
+  if self.readMeFrame then
+    local frame = self.readMeFrame
+    refreshThemeLayers(frame)
+    if frame.readMeLogoHolder and frame.readMeLogoHolder.RefreshTheme then
+      frame.readMeLogoHolder:RefreshTheme()
+    end
+    if frame.readMeTitle then setTextColor(frame.readMeTitle, theme.text or TEXT) end
+    if frame.readMeBody then setTextColor(frame.readMeBody, theme.text or TEXT) end
+    if frame.readMeClose and frame.readMeClose.RefreshTheme then
+      frame.readMeClose:RefreshTheme()
+    end
+    if addon and addon.ApplyUIFontSizeDelta then
+      addon:ApplyUIFontSizeDelta(frame)
+    end
+  end
 end
 
 function BRIDGE:Render(updates)
@@ -1197,11 +1387,11 @@ function BRIDGE:Render(updates)
 
     if shouldUseOpenedState(aura) then
       row.status:SetText(T("opened"))
-      setTextColor(row.status, GREEN)
+      setTextColor(row.status, currentTheme().good or GREEN)
       row.button:SetText(T("openAgain"))
     else
       row.status:SetText(T("ready"))
-      setTextColor(row.status, GREEN)
+      setTextColor(row.status, currentTheme().good or GREEN)
       row.button:SetText(aura.syncKind == "install" and T("install") or T("update"))
     end
 
@@ -1219,19 +1409,20 @@ function BRIDGE:Render(updates)
   local height = math.max(1, #updates * 84)
   content:SetSize(714, height)
   frame.count:SetText(#updates == 1 and T("countOne") or T("countMany", { count = #updates }))
+  self:RefreshTheme()
 end
 
 function BRIDGE:Show(force)
   if InCombatLockdown and InCombatLockdown() then
     self.showAfterCombat = force and true or false
-    printBridge(T("updatesAfterCombat"), GOLD)
+    printBridge(T("updatesAfterCombat"), currentTheme().accent or GOLD)
     return
   end
 
   local updates = queuedUpdates()
   if #updates == 0 then
     if force then
-      printBridge(T("noUpdates"), GOLD)
+      printBridge(T("noUpdates"), currentTheme().accent or GOLD)
     end
     if self.frame then
       self.frame:Hide()
@@ -1265,6 +1456,13 @@ SLASH_MERFINPLUS_WEAKAURA_UPDATES1 = "/merfinupdates"
 SLASH_MERFINPLUS_WEAKAURA_UPDATES2 = "/merfinwa"
 SlashCmdList.MERFINPLUS_WEAKAURA_UPDATES = function()
   BRIDGE:Show(true)
+end
+
+local merfinPlus = getMerfinPlus()
+if merfinPlus then
+  merfinPlus.RefreshCompanionBridgeTheme = function()
+    BRIDGE:RefreshTheme()
+  end
 end
 
 if CreateFrame then

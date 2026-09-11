@@ -4,7 +4,7 @@ local AceGUI = LibStub("AceGUI-3.0")
 local MerfinPlus = LibStub("AceAddon-3.0"):GetAddon("MerfinPlus")
 local theme = MerfinPlus.UITheme
 local WIDGET_TYPE = "MerfinPlusReadyCheckPreview"
-local WIDGET_VERSION = 6
+local WIDGET_VERSION = 7
 local MAX_SCALE = 0.70
 local TITLE_HEIGHT, HEADER_HEIGHT, ROW_HEIGHT = 25, 20, 18
 local NAME_WIDTH, STATUS_WIDTH = 126, 40
@@ -64,7 +64,7 @@ end
 
 local function PreviewColumnWidth(column)
   if column.durability then return DURABILITY_WIDTH end
-  if column.t5Version or column.t6Version then return PACK_STATUS_WIDTH end
+  if column.t5Version or column.t6Version or column.t6AVersion then return PACK_STATUS_WIDTH end
   return column.width or 48
 end
 
@@ -77,7 +77,7 @@ local function SetPreviewCell(cell, column, rowIndex, columnIndex)
   cell.icon:SetSize(12, 12)
   cell.icon:SetVertexColor(1, 1, 1, 1)
   cell.text:SetText("")
-  if column.t5Version or column.t6Version then
+  if column.t5Version or column.t6Version or column.t6AVersion then
     cell.icon:ClearAllPoints()
     cell.icon:SetPoint("CENTER", cell, "CENTER", 0, 0)
     if rowIndex % 5 == 0 then

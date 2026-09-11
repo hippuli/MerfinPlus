@@ -668,7 +668,7 @@ local function BuildEnemyOptions()
         local defaults = MerfinPlus.AutoMarkerDefaults.instances
           and MerfinPlus.AutoMarkerDefaults.instances[rowInstance]
           and MerfinPlus.AutoMarkerDefaults.instances[rowInstance][rowNpc] or {}
-        local markerCount = math.max(1, defaults.marks and #defaults.marks or 0)
+        local markerCount = math.max(4, defaults.marks and #defaults.marks or 0)
         local rowArgs = {
           enable = {
             type = "toggle",

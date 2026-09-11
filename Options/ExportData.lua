@@ -37,6 +37,48 @@ local LOOT_ITEM_BLACKLIST = {
 local TBC_VERDANT_SPHERE_ITEM_ID = 32405
 local TBC_KAELTHAS_ENCOUNTER_ID = 733
 
+-- Guild roster APIs expose class, level and professions, but not a member's
+-- specialization. For MoP we enrich the export only with specialization data
+-- the client already knows for the player or current group members. The fixed
+-- English names match the Guild Manager's canonical roster schema regardless
+-- of the game client's locale.
+local MOP_SPEC_NAMES = {
+  [62] = "Arcane",
+  [63] = "Fire",
+  [64] = "Frost",
+  [65] = "Holy",
+  [66] = "Protection",
+  [70] = "Retribution",
+  [71] = "Arms",
+  [72] = "Fury",
+  [73] = "Protection",
+  [102] = "Balance",
+  [103] = "Feral",
+  [104] = "Guardian",
+  [105] = "Restoration",
+  [250] = "Blood",
+  [251] = "Frost",
+  [252] = "Unholy",
+  [253] = "Beast Mastery",
+  [254] = "Marksmanship",
+  [255] = "Survival",
+  [256] = "Discipline",
+  [257] = "Holy",
+  [258] = "Shadow",
+  [259] = "Assassination",
+  [260] = "Combat",
+  [261] = "Subtlety",
+  [262] = "Elemental",
+  [263] = "Enhancement",
+  [264] = "Restoration",
+  [265] = "Affliction",
+  [266] = "Demonology",
+  [267] = "Destruction",
+  [268] = "Brewmaster",
+  [269] = "Windwalker",
+  [270] = "Mistweaver",
+}
+
 local RAID_DEFINITIONS = {
   classic = {
     { key = "molten_core", name = "Molten Core", ids = { 409 } },
@@ -297,6 +339,162 @@ local function GetPrimaryProfessions(memberInfo)
     end
   end
   return professions
+end
+
+local function GetCanonicalSpecializationName(specID)
+  specID = tonumber(specID)
+  if not specID or specID <= 0 then
+    return nil
+  end
+  if MOP_SPEC_NAMES[specID] then
+    return MOP_SPEC_NAMES[specID]
+  end
+
+  local specializationAPI = rawget(_G, "C_SpecializationInfo")
+  local getSpecializationInfoByID = specializationAPI and specializationAPI.GetSpecializationInfoByID
+    or rawget(_G, "GetSpecializationInfoByID")
+  if not getSpecializationInfoByID then
+    return nil
+  end
+  local ok, _, name = pcall(getSpecializationInfoByID, specID)
+  if ok and type(name) == "string" and name ~= "" then
+    return name
+  end
+  return nil
+end
+
+local function AddKnownSpecialization(lookup, guid, name, spec, secondarySpec)
+  if type(spec) ~= "string" or spec == "" then
+    return
+  end
+  local value = {
+    spec = spec,
+    secondarySpec = type(secondarySpec) == "string" and secondarySpec ~= spec and secondarySpec or nil,
+  }
+  if guid and guid ~= "" then
+    local existing = lookup.byGUID[guid]
+    if type(existing) == "table" and existing.spec == value.spec then
+      existing.secondarySpec = existing.secondarySpec or value.secondarySpec
+    else
+      lookup.byGUID[guid] = value
+    end
+  end
+
+  local nameKey = NormalizeGuildMemberName(name)
+  if nameKey ~= "" then
+    local existing = lookup.byName[nameKey]
+    if existing == nil then
+      lookup.byName[nameKey] = value
+    elseif type(existing) == "table" and existing.spec == value.spec then
+      existing.secondarySpec = existing.secondarySpec or value.secondarySpec
+    else
+      -- Never guess when connected-realm members share the same short name.
+      lookup.byName[nameKey] = false
+    end
+  end
+end
+
+local function GetOwnSpecializations()
+  local specializationAPI = rawget(_G, "C_SpecializationInfo")
+  local getSpecialization = specializationAPI and specializationAPI.GetSpecialization
+    or rawget(_G, "GetSpecialization")
+  local getSpecializationInfo = specializationAPI and specializationAPI.GetSpecializationInfo
+    or rawget(_G, "GetSpecializationInfo")
+  local getActiveSpecGroup = specializationAPI and specializationAPI.GetActiveSpecGroup
+    or rawget(_G, "GetActiveSpecGroup")
+  if not getSpecialization or not getSpecializationInfo then
+    return nil, nil
+  end
+
+  local activeGroup = 1
+  if getActiveSpecGroup then
+    local groupOK, groupIndex = pcall(getActiveSpecGroup, false, false)
+    local resolvedGroup = groupOK and tonumber(groupIndex) or nil
+    if resolvedGroup == 1 or resolvedGroup == 2 then
+      activeGroup = resolvedGroup
+    end
+  end
+
+  local function ReadGroup(groupIndex)
+    local indexOK, specializationIndex = pcall(getSpecialization, false, false, groupIndex)
+    specializationIndex = indexOK and tonumber(specializationIndex) or nil
+    if not specializationIndex or specializationIndex <= 0 then
+      return nil
+    end
+    local infoOK, specID = pcall(getSpecializationInfo, specializationIndex, false, false, nil, nil, groupIndex)
+    return infoOK and GetCanonicalSpecializationName(specID) or nil
+  end
+
+  local primarySpec = ReadGroup(activeGroup)
+  local secondaryGroup = activeGroup == 1 and 2 or 1
+  local secondarySpec = ReadGroup(secondaryGroup)
+  if secondarySpec == primarySpec then
+    secondarySpec = nil
+  end
+  return primarySpec, secondarySpec
+end
+
+local function GetKnownGroupSpecializationLookup()
+  local lookup = {
+    byGUID = {},
+    byName = {},
+  }
+
+  local ownSpec, ownSecondarySpec = GetOwnSpecializations()
+  AddKnownSpecialization(
+    lookup,
+    UnitGUID and UnitGUID("player") or nil,
+    UnitName and UnitName("player") or nil,
+    ownSpec,
+    ownSecondarySpec
+  )
+
+  local units = {}
+  if IsInRaid and IsInRaid() then
+    for index = 1, (GetNumGroupMembers and GetNumGroupMembers() or 0) do
+      units[#units + 1] = "raid" .. tostring(index)
+    end
+  elseif IsInGroup and IsInGroup() then
+    units[1] = "player"
+    local count = GetNumSubgroupMembers and GetNumSubgroupMembers()
+      or math.max(0, (GetNumGroupMembers and GetNumGroupMembers() or 1) - 1)
+    for index = 1, count do
+      units[#units + 1] = "party" .. tostring(index)
+    end
+  end
+
+  local getInspectSpecialization = rawget(_G, "GetInspectSpecialization")
+  local unitIsUnit = rawget(_G, "UnitIsUnit")
+  if getInspectSpecialization then
+    for _, unit in ipairs(units) do
+      local isPlayer = unit == "player" or (unitIsUnit and unitIsUnit(unit, "player"))
+      if not isPlayer and (not UnitExists or UnitExists(unit)) then
+        local inspectOK, specID = pcall(getInspectSpecialization, unit)
+        local spec = inspectOK and GetCanonicalSpecializationName(specID) or nil
+        AddKnownSpecialization(
+          lookup,
+          UnitGUID and UnitGUID(unit) or nil,
+          UnitName and UnitName(unit) or nil,
+          spec
+        )
+      end
+    end
+  end
+
+  -- Reuse already completed MerfinPlus raid-cooldown inspections without
+  -- starting new inspection traffic just for a roster export.
+  local tracker = MerfinPlus.RaidCooldownTracker
+  if tracker and type(tracker.GetRoster) == "function" then
+    local rosterOK, roster = pcall(tracker.GetRoster, tracker)
+    if rosterOK and type(roster) == "table" then
+      for name, member in pairs(roster) do
+        local spec = type(member) == "table" and GetCanonicalSpecializationName(member.spec) or nil
+        AddKnownSpecialization(lookup, nil, name, spec)
+      end
+    end
+  end
+
+  return lookup
 end
 
 function MerfinPlus:GetExportExpansionInfo()
@@ -814,7 +1012,7 @@ function MerfinPlus:BuildGuildExport()
   end
 
   local professionLookup
-  if expansion == "tbc" then
+  if expansion == "tbc" or expansion == "mop" then
     local professionError, professionRetryable
     professionLookup, professionError, professionRetryable = GetGuildProfessionMemberLookup()
     if not professionLookup then
@@ -822,6 +1020,7 @@ function MerfinPlus:BuildGuildExport()
     end
   end
 
+  local specializationLookup = expansion == "mop" and GetKnownGroupSpecializationLookup() or nil
   local rows = {}
   for index = 1, memberCount do
     local name, rankName, rankIndex, level, className, _, _, _, _, _, classToken, _, _, _, _, _, guid = GetGuildRosterInfo(index)
@@ -835,10 +1034,20 @@ function MerfinPlus:BuildGuildExport()
         professions = GetPrimaryProfessions(professionMember)
       end
 
+      local specializationMember
+      if specializationLookup then
+        specializationMember = guid and specializationLookup.byGUID[guid] or nil
+        if not specializationMember then
+          specializationMember = specializationLookup.byName[NormalizeGuildMemberName(name)]
+        end
+      end
+
       rows[#rows + 1] = {
         name = CleanPlayerName(name),
         class = classToken or className or "Player",
         level = maxLevel,
+        spec = type(specializationMember) == "table" and specializationMember.spec or nil,
+        secondarySpec = type(specializationMember) == "table" and specializationMember.secondarySpec or nil,
         professions = professions,
         -- Preserve the guild's exact rank text and its zero-based index.
         guildRankName = type(rankName) == "string" and rankName or nil,
@@ -850,6 +1059,7 @@ function MerfinPlus:BuildGuildExport()
   local output = {
     "{",
     "  \"schema\": \"merfinui.guild-manager.roster\",",
+    "  \"version\": 3,",
     "  \"expansion\": \"" .. JsonEscape(expansion) .. "\",",
     "  \"realm\": \"" .. JsonEscape(GetRealmName and GetRealmName() or "") .. "\",",
     "  \"characters\": [",
@@ -861,6 +1071,12 @@ function MerfinPlus:BuildGuildExport()
       "\"class\": \"" .. JsonEscape(entry.class) .. "\"",
       "\"level\": " .. tostring(entry.level),
     }
+    if entry.spec ~= nil then
+      fields[#fields + 1] = "\"spec\": \"" .. JsonEscape(entry.spec) .. "\""
+    end
+    if entry.secondarySpec ~= nil then
+      fields[#fields + 1] = "\"secondarySpec\": \"" .. JsonEscape(entry.secondarySpec) .. "\""
+    end
     if entry.guildRankName ~= nil then
       fields[#fields + 1] = "\"guildRankName\": \"" .. JsonEscape(entry.guildRankName) .. "\""
     end

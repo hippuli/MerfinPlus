@@ -11,6 +11,7 @@ local ADDON_PREFIX = "MFP_RC1"
 local T5_PREFIX = "MERFIN_VC"
 local T5_PACK_KEY = "T5"
 local T6_PACK_KEY = "T6"
+local T6_ASSIGNMENTS_PACK_KEY = "T6A"
 local EXPIRING_SECONDS = 5 * 60
 local DURABILITY_BASIS_POINTS_PER_PERCENT = 100
 local DURABILITY_MAX_BASIS_POINTS = 100 * DURABILITY_BASIS_POINTS_PER_PERCENT
@@ -63,6 +64,7 @@ local READY_CHECK_DEFAULTS = {
   showMerfinPlusColumn = true,
   showT5Column = true,
   showT6Column = true,
+  showT6AColumn = true,
   windowWidth = BASE_WIDTH,
   windowHeight = BASE_HEIGHT,
   windowX = 0,
@@ -181,6 +183,7 @@ local COLUMNS = {
   { key = "merfinPlus", label = "Merfin Plus", shortLabel = "MP", width = 66, visibleSetting = "showMerfinPlusColumn", version = true },
   { key = "t5", label = "T5", shortLabel = "T5", width = 76, visibleSetting = "showT5Column", t5Version = true },
   { key = "t6", label = "T6", shortLabel = "T6", width = 76, visibleSetting = "showT6Column", t6Version = true },
+  { key = "t6a", label = "T6 Assignments", shortLabel = "T6A", width = 76, visibleSetting = "showT6AColumn", t6AVersion = true },
 }
 
 MerfinPlus.READY_CHECK_COLUMNS = COLUMNS
@@ -204,6 +207,7 @@ local OPTION_ICONS = {
   merfinPlus = "Interface\\AddOns\\MerfinPlus\\Media\\icons\\merfinui_logo_2",
   t5 = "Interface\\AddOns\\MerfinPlus\\Media\\icons\\raid\\t5raid.png",
   t6 = "Interface\\AddOns\\MerfinPlus\\Media\\icons\\raid\\t6raid.png",
+  t6a = "Interface\\AddOns\\MerfinPlus\\Media\\icons\\raid\\assignmentsraid.png",
 }
 MerfinPlus.READY_CHECK_OPTION_ICONS = OPTION_ICONS
 
@@ -692,11 +696,50 @@ local function GetLocalT6Version()
     or GetWeakAuraVersion(root)
 end
 
+local function GetLocalT6AssignmentsVersion()
+  local rootID = "[Merfin] T6 Assigns"
+  local officialWagoID = "ueFpAzV3e"
+  local directMerfinUID = "MUIX1228"
+  local minimumMerfinRevision = 1
+
+  local data
+  if WeakAuras and WeakAuras.GetData then
+    data = WeakAuras.GetData(rootID)
+  end
+  if type(data) ~= "table" then
+    local displays = WeakAurasSaved and WeakAurasSaved.displays
+    data = type(displays) == "table" and displays[rootID] or nil
+  end
+  if type(data) ~= "table" or data.id ~= rootID then
+    return nil
+  end
+
+  local description = type(data.desc) == "string" and data.desc or ""
+  local embeddedUID = description:match("MerfinUID:%s*([%w_-]+)")
+  local embeddedRevision = tonumber(description:match("MerfinRev:%s*(%d+)"))
+  local hasDirectIdentity = embeddedUID == directMerfinUID
+    and embeddedRevision ~= nil
+    and embeddedRevision >= minimumMerfinRevision
+
+  local url = type(data.url) == "string" and string.lower(data.url) or ""
+  local hasOfficialWagoIdentity = data.wagoID == officialWagoID
+    or url:find("wago.io/t6_assigns", 1, true) ~= nil
+
+  if not hasDirectIdentity and not hasOfficialWagoIdentity then
+    return nil
+  end
+
+  return GetWeakAuraVersion(data)
+    or (data.version and tostring(data.version))
+    or (embeddedRevision and tostring(embeddedRevision))
+end
+
 local function RequestRaidPackVersions()
   local channel = GetGroupChannel()
   if channel then
     SendT5Payload("REQ:" .. T5_PACK_KEY, channel)
     SendT5Payload("REQ:" .. T6_PACK_KEY, channel)
+    SendT5Payload("REQ:" .. T6_ASSIGNMENTS_PACK_KEY, channel)
   end
 end
 
@@ -916,7 +959,9 @@ local function CreateAuraCell(parent)
       return
     elseif current.durabilityBasisPoints ~= nil then
       GameTooltip:AddLine(string.format("%.2f%%", current.durabilityBasisPoints / DURABILITY_BASIS_POINTS_PER_PERCENT), 1, 1, 1)
-    elseif current.isT5Version or current.isT6Version then
+    elseif current.isOffline then
+      GameTooltip:AddLine(MerfinPlus:T("Offline"), 0.60, 0.60, 0.60)
+    elseif current.isT5Version or current.isT6Version or current.isT6AVersion then
       GameTooltip:AddLine(current.versionValue and MerfinPlus:T("Reported: %s", current.versionValue) or "Missing", current.versionValue and 0.4 or 1, current.versionValue and 1 or 0.25, 0.3)
       if current.localVersion then GameTooltip:AddLine(MerfinPlus:T("Local: %s", current.localVersion), 0.75, 0.75, 0.75) end
     elseif current.isVersion then
@@ -998,7 +1043,7 @@ local function LayoutReadyCheckCellIcons(cell, rowHeight, scale)
   local cellWidth = cell:GetWidth()
   local iconSize = math.max(9, math.min(rowHeight - 6, 14 * scale, cellWidth - 4))
 
-  if cell.isT5Version or cell.isT6Version then
+  if cell.isT5Version or cell.isT6Version or cell.isT6AVersion then
     cell.icon:ClearAllPoints()
     cell.icon:SetPoint("CENTER", cell, "CENTER", 0, 0)
     cell.icon:SetSize(iconSize, iconSize)
@@ -1091,6 +1136,13 @@ local function CreateReadyCheckRow(parent)
   row.statusIcon = row:CreateTexture(nil, "ARTWORK")
   row.statusIcon:SetTexCoord(0, 1, 0, 1)
 
+  row.statusText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+  ApplyReadyCheckFont(row.statusText, 9, "OUTLINE")
+  row.statusText:SetJustifyH("CENTER")
+  row.statusText:SetText("OFF")
+  row.statusText:SetTextColor(0.58, 0.58, 0.58, 1)
+  row.statusText:Hide()
+
   row.cells = {}
   for index, column in ipairs(COLUMNS) do
     local cell = CreateAuraCell(row)
@@ -1099,6 +1151,7 @@ local function CreateReadyCheckRow(parent)
     cell.isVersion = column.version and true or false
     cell.isT5Version = column.t5Version and true or false
     cell.isT6Version = column.t6Version and true or false
+    cell.isT6AVersion = column.t6AVersion and true or false
     row.cells[index] = cell
   end
   return row
@@ -1491,15 +1544,21 @@ function MerfinPlus:BuildReadyCheckOptions()
         order = 43,
         width = 1.0,
       },
+      showT6AColumn = {
+        type = "toggle",
+        name = function() return IconLabel("t6a", "T6A") end,
+        order = 44,
+        width = 1.0,
+      },
       previewHeader = {
         type = "header",
         name = self:T("Interactive Preview"),
-        order = 44,
+        order = 45,
       },
       preview = {
         type = "description",
         name = "",
-        order = 45,
+        order = 46,
         width = "full",
         dialogControl = "MerfinPlusReadyCheckPreview",
       },
@@ -1860,8 +1919,9 @@ function MerfinPlus:UpdateReadyCheckWindowLayout(fitHeight, fitWidth)
       description = "Lowest equipped-item durability reported by MerfinPlus."
     elseif column.version then
       description = "MerfinPlus version reported by the player."
-    elseif column.t5Version or column.t6Version then
-      description = (column.t6Version and "T6" or "T5") .. " Raid Pack installation status reported by the player."
+    elseif column.t5Version or column.t6Version or column.t6AVersion then
+      local packLabel = column.t6AVersion and "T6 Assignments" or (column.t6Version and "T6" or "T5")
+      description = packLabel .. " installation status reported by the player."
     else
       description = "Directly read from visible group auras."
     end
@@ -1889,6 +1949,12 @@ function MerfinPlus:UpdateReadyCheckWindowLayout(fitHeight, fitWidth)
       row.statusIcon:SetPoint("CENTER", row, "LEFT", nameWidth + (statusWidth / 2), 0)
       local statusIconSize = math.max(10, math.min(rowHeight - 4, 15 * scale))
       row.statusIcon:SetSize(statusIconSize, statusIconSize)
+      if row.statusText then
+        row.statusText:ClearAllPoints()
+        row.statusText:SetPoint("CENTER", row.statusIcon, "CENTER", 0, 0)
+        row.statusText:SetWidth(statusWidth)
+        ApplyReadyCheckFont(row.statusText, Clamp(rowFontSize - 2, 7, 22), "OUTLINE")
+      end
 
       local cellX = nameWidth + statusWidth
       for _, cell in ipairs(row.cells) do
@@ -1903,7 +1969,7 @@ function MerfinPlus:UpdateReadyCheckWindowLayout(fitHeight, fitWidth)
         LayoutReadyCheckCellIcons(cell, rowHeight, scale)
         cell.text:ClearAllPoints()
         cell.text:SetAllPoints(cell)
-        if cell.isT5Version or cell.isT6Version then
+        if cell.isT5Version or cell.isT6Version or cell.isT6AVersion then
           cell.text:ClearAllPoints()
           cell.text:SetPoint("LEFT", cell.icon, "RIGHT", 2 * scale, 0)
           cell.text:SetPoint("RIGHT", cell, "RIGHT", -2 * scale, 0)
@@ -1983,6 +2049,42 @@ function MerfinPlus:GetStoredReadyStatus(member)
   return status
 end
 
+local function IsReadyCheckMemberOffline(member)
+  if not member or type(member.unit) ~= "string" or not UnitIsConnected then
+    return false
+  end
+  return UnitIsConnected(member.unit) == false
+end
+
+function MerfinPlus:SetReadyCheckOfflineCell(cell, column)
+  cell.categoryLabel = self:T(column.label)
+  cell.auraData = nil
+  cell.auraGroup = nil
+  cell.durabilityValue = nil
+  cell.durabilityBasisPoints = nil
+  cell.versionValue = nil
+  cell.localVersion = nil
+  cell.isDurability = false
+  cell.isVersion = false
+  cell.isT5Version = false
+  cell.isT6Version = false
+  cell.isT6AVersion = false
+  cell.isExpiring = false
+  cell.isOffline = true
+  if cell.auraIconButtons then
+    SetReadyCheckAuraIconButtons(cell, nil, nil)
+  end
+  cell.icon:Hide()
+  cell.icon2:Hide()
+  cell.expiringIcon:Hide()
+  cell.text:ClearAllPoints()
+  cell.text:SetAllPoints(cell)
+  cell.text:SetText("OFF")
+  cell.text:SetTextColor(0.58, 0.58, 0.58, 1)
+  cell.background:SetColorTexture(0.045, 0.045, 0.045, 0.82)
+  SetBorderColor(cell, 0.24, 0.24, 0.24, 0.92)
+end
+
 function MerfinPlus:SetReadyCheckAuraCell(cell, column, aura, auraMatches)
   local useIndividualIcons = column.key == "food"
   cell.categoryLabel = self:T(column.label)
@@ -1996,7 +2098,9 @@ function MerfinPlus:SetReadyCheckAuraCell(cell, column, aura, auraMatches)
   cell.isVersion = false
   cell.isT5Version = false
   cell.isT6Version = false
+  cell.isT6AVersion = false
   cell.isExpiring = false
+  cell.isOffline = false
   cell.icon2:Hide()
   cell.expiringIcon:Hide()
   if useIndividualIcons then
@@ -2061,7 +2165,9 @@ function MerfinPlus:SetReadyCheckFlaskCell(cell, auras)
   cell.isVersion = false
   cell.isT5Version = false
   cell.isT6Version = false
+  cell.isT6AVersion = false
   cell.isExpiring = false
+  cell.isOffline = false
   cell.icon:Hide()
   cell.icon2:Hide()
   cell.expiringIcon:Hide()
@@ -2114,7 +2220,9 @@ function MerfinPlus:SetReadyCheckDurabilityCell(cell, value)
   cell.isVersion = false
   cell.isT5Version = false
   cell.isT6Version = false
+  cell.isT6AVersion = false
   cell.isExpiring = false
+  cell.isOffline = false
   cell.icon:Hide()
   cell.icon2:Hide()
   cell.expiringIcon:Hide()
@@ -2163,7 +2271,9 @@ function MerfinPlus:SetReadyCheckVersionCell(cell, version, responded)
   cell.isVersion = true
   cell.isT5Version = false
   cell.isT6Version = false
+  cell.isT6AVersion = false
   cell.isExpiring = false
+  cell.isOffline = false
   cell.icon:Hide()
   cell.icon2:Hide()
   cell.expiringIcon:Hide()
@@ -2214,6 +2324,8 @@ function MerfinPlus:SetReadyCheckT5Cell(cell, version, responded)
   cell.durabilityValue, cell.durabilityBasisPoints = nil, nil
   cell.versionValue, cell.localVersion = version, nil
   cell.isDurability, cell.isVersion, cell.isT5Version, cell.isT6Version, cell.isExpiring = false, false, true, false, false
+  cell.isT6AVersion = false
+  cell.isOffline = false
   cell.icon2:Hide()
   cell.expiringIcon:Hide()
   if installed then
@@ -2243,6 +2355,28 @@ function MerfinPlus:SetReadyCheckT6Cell(cell, version, responded)
   cell.durabilityValue, cell.durabilityBasisPoints = nil, nil
   cell.versionValue, cell.localVersion = version, nil
   cell.isDurability, cell.isVersion, cell.isT5Version, cell.isT6Version, cell.isExpiring = false, false, false, true, false
+  cell.isT6AVersion = false
+  cell.isOffline = false
+  cell.icon2:Hide(); cell.expiringIcon:Hide()
+  cell.icon:SetTexture(installed and STATUS_TEXTURES.ready or STATUS_TEXTURES.notready)
+  cell.icon:SetVertexColor(1, 1, 1, 1); cell.icon:Show()
+  cell.text:SetText("")
+  cell.text:SetTextColor(installed and 0.25 or 1, installed and 1 or 0.28, installed and 0.35 or 0.28, 1)
+  cell.background:SetColorTexture(installed and 0.025 or 0.12, installed and 0.09 or 0.025, installed and 0.035 or 0.025, 0.82)
+  if installed then SetBorderColor(cell, 0.18, 0.62, 0.25, 0.95) else SetBorderColor(cell, 0.65, 0.08, 0.08, 0.95) end
+end
+
+function MerfinPlus:SetReadyCheckT6ACell(cell, version, responded)
+  version = responded and NormalizeReportedVersion(version) or nil
+  local installed = version ~= nil
+  cell.categoryLabel = "T6 Assignments"
+  cell.auraData, cell.auraGroup = nil, nil
+  cell.durabilityValue, cell.durabilityBasisPoints = nil, nil
+  cell.versionValue, cell.localVersion = version, nil
+  cell.isDurability, cell.isVersion, cell.isT5Version, cell.isT6Version, cell.isExpiring = false, false, false, false, false
+  cell.isT6AVersion = true
+  cell.isOffline = false
+  if cell.auraIconButtons then SetReadyCheckAuraIconButtons(cell, nil, nil) end
   cell.icon2:Hide(); cell.expiringIcon:Hide()
   cell.icon:SetTexture(installed and STATUS_TEXTURES.ready or STATUS_TEXTURES.notready)
   cell.icon:SetVertexColor(1, 1, 1, 1); cell.icon:Show()
@@ -2260,8 +2394,12 @@ function MerfinPlus:RenderReadyCheckMember(member, options)
   end
   options = options or {}
 
+  local wasOffline = member.isOffline
+  local offline = IsReadyCheckMemberOffline(member)
+  member.isOffline = offline
+
   local auraChanged = false
-  if options.auras then
+  if options.auras and not offline then
     local auras = ScanUnitAuras(member.unit)
     local signature = ReadyCheckAuraSignature(auras)
     auraChanged = options.forceAuras or signature ~= member.auraSignature
@@ -2280,7 +2418,30 @@ function MerfinPlus:RenderReadyCheckMember(member, options)
     row.nameText:SetText(member.name)
   end
 
-  if options.status then
+  if offline then
+    row.background:SetColorTexture(0.10, 0.10, 0.10, 0.46)
+    row.nameText:SetText(member.name)
+    if row.nameText.SetTextColor then
+      row.nameText:SetTextColor(0.58, 0.58, 0.58, 1)
+    end
+    row.statusIcon:Hide()
+    if row.statusText then row.statusText:Show() end
+    for cellIndex, column in ipairs(COLUMNS) do
+      local cell = row.cells[cellIndex]
+      self:SetReadyCheckOfflineCell(cell, column)
+      if options.layoutCells and frame.readyCheckRowHeight then
+        LayoutReadyCheckCellIcons(cell, frame.readyCheckRowHeight, frame.readyCheckScale)
+      end
+    end
+    return auraChanged
+  end
+
+  if row.nameText.SetTextColor then
+    row.nameText:SetTextColor(1, 1, 1, 1)
+  end
+  if row.statusText then row.statusText:Hide() end
+
+  if options.status or wasOffline then
     member.status = self:GetStoredReadyStatus(member)
     row.statusIcon:SetTexture(STATUS_TEXTURES[member.status] or STATUS_TEXTURES.waiting)
     row.statusIcon:Show()
@@ -2289,7 +2450,14 @@ function MerfinPlus:RenderReadyCheckMember(member, options)
   for cellIndex, column in ipairs(COLUMNS) do
     local cell = row.cells[cellIndex]
     local cellChanged = false
-    if column.t6Version and options.t6Version then
+    if column.t6AVersion and options.t6AVersion then
+      self:SetReadyCheckT6ACell(
+        cell,
+        self.readyCheckT6AVersions and self.readyCheckT6AVersions[member.nameKey],
+        self.readyCheckT6AResponded and self.readyCheckT6AResponded[member.nameKey]
+      )
+      cellChanged = true
+    elseif column.t6Version and options.t6Version then
       self:SetReadyCheckT6Cell(cell, self.readyCheckT6Versions and self.readyCheckT6Versions[member.nameKey], self.readyCheckT6Responded and self.readyCheckT6Responded[member.nameKey])
       cellChanged = true
     elseif column.t5Version and options.t5Version then
@@ -2309,7 +2477,7 @@ function MerfinPlus:RenderReadyCheckMember(member, options)
     elseif column.durability and options.durability then
       self:SetReadyCheckDurabilityCell(cell, self.readyCheckDurability and self.readyCheckDurability[member.nameKey])
       cellChanged = true
-    elseif not column.version and not column.t5Version and not column.t6Version and not column.durability and auraChanged then
+    elseif not column.version and not column.t5Version and not column.t6Version and not column.t6AVersion and not column.durability and auraChanged then
       if column.flaskElixirs then
         self:SetReadyCheckFlaskCell(cell, member.auras)
       else
@@ -2424,6 +2592,7 @@ function MerfinPlus:RefreshReadyCheckWindow()
       version = true,
       t5Version = true,
       t6Version = true,
+      t6AVersion = true,
       static = true,
     })
   end
@@ -2481,6 +2650,8 @@ function MerfinPlus:RequestReadyCheckDurability()
   self.readyCheckT5Responded = {}
   self.readyCheckT6Versions = {}
   self.readyCheckT6Responded = {}
+  self.readyCheckT6AVersions = {}
+  self.readyCheckT6AResponded = {}
 
   local playerName = GetUnitFullName("player")
   local localDurability = CalculateLocalDurability()
@@ -2497,6 +2668,9 @@ function MerfinPlus:RequestReadyCheckDurability()
     local t6Version = NormalizeReportedVersion(GetLocalT6Version())
     self.readyCheckT6Versions[playerKey] = t6Version
     self.readyCheckT6Responded[playerKey] = t6Version ~= nil
+    local t6AVersion = NormalizeReportedVersion(GetLocalT6AssignmentsVersion())
+    self.readyCheckT6AVersions[playerKey] = t6AVersion
+    self.readyCheckT6AResponded[playerKey] = t6AVersion ~= nil
   end
 
   SendAddonPayload("Q:" .. self.readyCheckNonce, channel)
@@ -2510,23 +2684,33 @@ function MerfinPlus:HandleReadyCheckAddonMessage(_, prefix, message, _, sender)
 
   if prefix == T5_PREFIX then
     local command, pack, version = strsplit(":", message)
-    if command == "REQ" and (pack == T5_PACK_KEY or pack == T6_PACK_KEY) then
+    local supportedPack = pack == T5_PACK_KEY or pack == T6_PACK_KEY or pack == T6_ASSIGNMENTS_PACK_KEY
+    if command == "REQ" and supportedPack then
       local localVersion
       if pack == T5_PACK_KEY then
         localVersion = NormalizeReportedVersion(GetLocalT5Version())
-      else
+      elseif pack == T6_PACK_KEY then
         localVersion = NormalizeReportedVersion(GetLocalT6Version())
+      else
+        localVersion = NormalizeReportedVersion(GetLocalT6AssignmentsVersion())
       end
       if localVersion and NormalizeName(sender) ~= NormalizeName(GetUnitFullName("player")) then
         SendT5Payload("WA:" .. pack .. ":" .. localVersion, "WHISPER", sender)
       end
-    elseif command == "WA" and (pack == T5_PACK_KEY or pack == T6_PACK_KEY) then
+    elseif command == "WA" and supportedPack then
       local senderKey = NormalizeName(sender)
-      local versionsKey = pack == T5_PACK_KEY and "readyCheckT5Versions" or "readyCheckT6Versions"
-      local respondedKey = pack == T5_PACK_KEY and "readyCheckT5Responded" or "readyCheckT6Responded"
+      local versionsKey = pack == T5_PACK_KEY and "readyCheckT5Versions"
+        or (pack == T6_PACK_KEY and "readyCheckT6Versions" or "readyCheckT6AVersions")
+      local respondedKey = pack == T5_PACK_KEY and "readyCheckT5Responded"
+        or (pack == T6_PACK_KEY and "readyCheckT6Responded" or "readyCheckT6AResponded")
       self[versionsKey] = self[versionsKey] or {}; self[respondedKey] = self[respondedKey] or {}
       self[versionsKey][senderKey] = NormalizeReportedVersion(version); self[respondedKey][senderKey] = true
-      self:RefreshReadyCheckMember(sender, { t5Version = pack == T5_PACK_KEY, t6Version = pack == T6_PACK_KEY, layoutCells = true })
+      self:RefreshReadyCheckMember(sender, {
+        t5Version = pack == T5_PACK_KEY,
+        t6Version = pack == T6_PACK_KEY,
+        t6AVersion = pack == T6_ASSIGNMENTS_PACK_KEY,
+        layoutCells = true,
+      })
     end
     return
   end
@@ -2713,13 +2897,15 @@ function MerfinPlus:ReportReadyCheckCategories()
 
   local members = self:BuildReadyCheckRoster()
   for _, member in ipairs(members) do
-    local auras = ScanUnitAuras(member.unit)
-    for _, selected in ipairs(selectedCategories) do
-      local category = selected.category
-      local present = category.flaskElixirs and GetFlaskElixirState(auras)
-        or (category.auraKey and auras[category.auraKey])
-      if not present then
-        selected.missing[#selected.missing + 1] = member.name
+    if not IsReadyCheckMemberOffline(member) then
+      local auras = ScanUnitAuras(member.unit)
+      for _, selected in ipairs(selectedCategories) do
+        local category = selected.category
+        local present = category.flaskElixirs and GetFlaskElixirState(auras)
+          or (category.auraKey and auras[category.auraKey])
+        if not present then
+          selected.missing[#selected.missing + 1] = member.name
+        end
       end
     end
   end
@@ -2814,6 +3000,12 @@ function MerfinPlus:HandleReadyCheckRosterUpdate()
   self:RefreshReadyCheckWindow()
 end
 
+function MerfinPlus:HandleReadyCheckUnitConnection()
+  if self.readyCheckActive and self.readyCheckFrame and self.readyCheckFrame:IsShown() then
+    self:RefreshReadyCheckWindow()
+  end
+end
+
 function MerfinPlus:InitializeReadyCheck()
   if self.readyCheckInitialized then
     return
@@ -2846,6 +3038,7 @@ function MerfinPlus:InitializeReadyCheck()
   eventFrame:RegisterEvent("READY_CHECK_FINISHED")
   eventFrame:RegisterEvent("CHAT_MSG_ADDON")
   eventFrame:RegisterEvent("UNIT_AURA")
+  eventFrame:RegisterEvent("UNIT_CONNECTION")
   eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
   eventFrame:SetScript("OnEvent", function(_, event, ...)
     if event == "READY_CHECK" then
@@ -2858,6 +3051,8 @@ function MerfinPlus:InitializeReadyCheck()
       MerfinPlus:HandleReadyCheckAddonMessage(event, ...)
     elseif event == "UNIT_AURA" then
       MerfinPlus:HandleReadyCheckUnitAura(event, ...)
+    elseif event == "UNIT_CONNECTION" then
+      MerfinPlus:HandleReadyCheckUnitConnection(event, ...)
     elseif event == "GROUP_ROSTER_UPDATE" then
       MerfinPlus:HandleReadyCheckRosterUpdate(event, ...)
     end
