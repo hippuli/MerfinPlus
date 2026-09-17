@@ -295,7 +295,8 @@ local function ValidateAssignments(assignments, kind, groupID)
   local raidCount = IsDenseArray(assignments.rs, LIMITS.raids)
   local bossCount = IsDenseArray(assignments.bs, kind == "D" and 1 or LIMITS.bosses)
   if not raidCount or raidCount < 1 then return nil, "a.rs must contain one or more raids." end
-  if not bossCount or bossCount < 1 then return nil, "a.bs must contain one or more bosses." end
+  if bossCount == nil then return nil, "a.bs must be a dense boss array." end
+  if kind == "D" and bossCount ~= 1 then return nil, "Boss deltas require exactly one a.bs boss." end
   local raidIDs = {}
   for index, raid in ipairs(assignments.rs) do
     ok, errorText = RejectUnknown(raid, RAID_FIELDS, "a.rs[" .. index .. "]")
@@ -404,6 +405,9 @@ local function ValidateAssignments(assignments, kind, groupID)
             end
           end
         else
+          if row.k == "position" and row.i ~= nil and not IsText(row.i, 256, true) then
+            return nil, rowLabel .. ".i must be a non-empty position assignment id."
+          end
           if row.bn ~= nil or row.bi ~= nil then
             if row.k ~= "utility" then
               return nil, rowLabel .. " uses boss-spell fields outside k=additional or k=utility."
@@ -415,7 +419,7 @@ local function ValidateAssignments(assignments, kind, groupID)
               return nil, rowLabel .. ".bi is not a canonical icon token."
             end
           end
-          if row.i ~= nil or row.wn ~= nil or row.wi ~= nil
+          if (row.i ~= nil and row.k ~= "position") or row.wn ~= nil or row.wi ~= nil
             or row.an ~= nil or row.ai ~= nil or row.ae ~= nil or row.cn ~= nil or row.ci ~= nil
             or row.ce ~= nil or row.x ~= nil or row.v ~= nil
           then
@@ -489,6 +493,18 @@ local function ValidatePayload(owner, payload)
   end
   ok, errorText = ValidatePlans(owner, payload)
   if not ok then return nil, errorText end
+  if payload.k == "F" and #payload.a.bs == 0 then
+    local hasNonEmptyPlan = false
+    for _, plan in ipairs(payload.p.l) do
+      if #plan.elements > 0 then
+        hasNonEmptyPlan = true
+        break
+      end
+    end
+    if not hasNonEmptyPlan then
+      return nil, "Full snapshots require at least one assignment boss or non-empty Boss Plan."
+    end
+  end
   return payload
 end
 

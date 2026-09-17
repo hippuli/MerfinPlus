@@ -12,6 +12,8 @@ local T5_PREFIX = "MERFIN_VC"
 local T5_PACK_KEY = "T5"
 local T6_PACK_KEY = "T6"
 local T6_ASSIGNMENTS_PACK_KEY = "T6A"
+local PACK_REQUEST_RETRY_DELAYS = { 0.8, 2.0 }
+local PACK_REQUEST_SETTLE_SECONDS = 3.2
 local EXPIRING_SECONDS = 5 * 60
 local DURABILITY_BASIS_POINTS_PER_PERCENT = 100
 local DURABILITY_MAX_BASIS_POINTS = 100 * DURABILITY_BASIS_POINTS_PER_PERCENT
@@ -301,6 +303,16 @@ local function NormalizeReportedVersion(version)
   return version
 end
 
+local function EncodePackVersion(version)
+  local normalized = NormalizeReportedVersion(version)
+  return normalized and EncodeAddonVersion(normalized) or "x"
+end
+
+local function DecodePackVersion(token)
+  if token == "x" then return nil end
+  return NormalizeReportedVersion(token)
+end
+
 local function FormatAddonVersion(version)
   version = tostring(version or "")
   if version == "" then
@@ -465,18 +477,40 @@ local function IsSenderInGroup(sender)
   return false
 end
 
+local function SendReadyCheckAddonMessage(prefix, message, distribution, target, queueName)
+  if not prefix or not message or not distribution then
+    return false
+  end
+
+  local sender
+  if ChatThrottleLib and ChatThrottleLib.SendAddonMessage then
+    sender = function()
+      return ChatThrottleLib:SendAddonMessage(
+        "ALERT",
+        prefix,
+        message,
+        distribution,
+        target,
+        queueName
+      )
+    end
+  elseif C_ChatInfo and C_ChatInfo.SendAddonMessage then
+    sender = function()
+      return C_ChatInfo.SendAddonMessage(prefix, message, distribution, target)
+    end
+  elseif SendAddonMessage then
+    sender = function()
+      return SendAddonMessage(prefix, message, distribution, target)
+    end
+  end
+
+  if not sender then return false end
+  local ok, result = pcall(sender)
+  return ok == true and result ~= false
+end
+
 local function SendAddonPayload(message, distribution, target)
-  if not message or not distribution then
-    return false
-  end
-
-  local sender = C_ChatInfo and C_ChatInfo.SendAddonMessage or SendAddonMessage
-  if not sender then
-    return false
-  end
-
-  local ok = pcall(sender, ADDON_PREFIX, message, distribution, target)
-  return ok
+  return SendReadyCheckAddonMessage(ADDON_PREFIX, message, distribution, target, "MFP-RC")
 end
 
 local function SendGroupChat(message)
@@ -595,11 +629,7 @@ local function ScanUnitAuras(unit)
 end
 
 local function SendT5Payload(message, distribution, target)
-  if C_ChatInfo and C_ChatInfo.SendAddonMessage then
-    C_ChatInfo.SendAddonMessage(T5_PREFIX, message, distribution, target)
-  elseif SendAddonMessage then
-    SendAddonMessage(T5_PREFIX, message, distribution, target)
-  end
+  return SendReadyCheckAddonMessage(T5_PREFIX, message, distribution, target, "MFP-RC-PACK")
 end
 
 local function GetWeakAuraVersion(data)
@@ -740,6 +770,31 @@ local function RequestRaidPackVersions()
     SendT5Payload("REQ:" .. T5_PACK_KEY, channel)
     SendT5Payload("REQ:" .. T6_PACK_KEY, channel)
     SendT5Payload("REQ:" .. T6_ASSIGNMENTS_PACK_KEY, channel)
+  end
+end
+
+local function RequestMissingRaidPackVersions(owner)
+  local frame = owner and owner.readyCheckFrame
+  for _, member in ipairs(frame and frame.members or {}) do
+    local target = member.fullName or GetUnitFullName(member.unit)
+    local connected = not UnitIsConnected or UnitIsConnected(member.unit) ~= false
+    if connected and target and NormalizeName(target) ~= NormalizeName(GetUnitFullName("player")) then
+      local key = member.nameKey
+      if owner.readyCheckNonce
+        and not (owner.readyCheckVersionResponded and owner.readyCheckVersionResponded[key])
+      then
+        SendAddonPayload("Q:" .. owner.readyCheckNonce, "WHISPER", target)
+      end
+      if not (owner.readyCheckT5Responded and owner.readyCheckT5Responded[key]) then
+        SendT5Payload("REQ:" .. T5_PACK_KEY, "WHISPER", target)
+      end
+      if not (owner.readyCheckT6Responded and owner.readyCheckT6Responded[key]) then
+        SendT5Payload("REQ:" .. T6_PACK_KEY, "WHISPER", target)
+      end
+      if not (owner.readyCheckT6AResponded and owner.readyCheckT6AResponded[key]) then
+        SendT5Payload("REQ:" .. T6_ASSIGNMENTS_PACK_KEY, "WHISPER", target)
+      end
+    end
   end
 end
 
@@ -962,7 +1017,11 @@ local function CreateAuraCell(parent)
     elseif current.isOffline then
       GameTooltip:AddLine(MerfinPlus:T("Offline"), 0.60, 0.60, 0.60)
     elseif current.isT5Version or current.isT6Version or current.isT6AVersion then
-      GameTooltip:AddLine(current.versionValue and MerfinPlus:T("Reported: %s", current.versionValue) or "Missing", current.versionValue and 0.4 or 1, current.versionValue and 1 or 0.25, 0.3)
+      if not current.packResponded then
+        GameTooltip:AddLine(MerfinPlus:T("Waiting for response..."), 0.72, 0.72, 0.72)
+      else
+        GameTooltip:AddLine(current.versionValue and MerfinPlus:T("Reported: %s", current.versionValue) or "Missing", current.versionValue and 0.4 or 1, current.versionValue and 1 or 0.25, 0.3)
+      end
       if current.localVersion then GameTooltip:AddLine(MerfinPlus:T("Local: %s", current.localVersion), 0.75, 0.75, 0.75) end
     elseif current.isVersion then
       if current.versionValue then
@@ -1702,6 +1761,7 @@ function MerfinPlus:CreateReadyCheckWindow()
   end)
   frame:SetScript("OnHide", function()
     MerfinPlus:CancelReadyCheckCountdownTimer()
+    MerfinPlus:CancelReadyCheckPackRequestTimers()
     if MerfinPlus.readyCheckManualMode then
       MerfinPlus.readyCheckManualMode = false
       MerfinPlus.readyCheckActive = false
@@ -2002,6 +2062,7 @@ function MerfinPlus:BuildReadyCheckRoster()
           guid = guid,
           key = guid or NormalizeName(fullName),
           nameKey = NormalizeName(fullName),
+          fullName = fullName,
           name = DisplayName(fullName),
           classFile = classFile,
           rosterIndex = rosterIndex,
@@ -2316,6 +2377,32 @@ function MerfinPlus:UpdateReadyCheckResponseCount()
   end
 end
 
+local function ApplyReadyCheckPackStatus(cell, installed, responded)
+  cell.packResponded = responded and true or false
+  cell.icon2:Hide()
+  cell.expiringIcon:Hide()
+  cell.text:SetText("")
+  cell.icon:SetVertexColor(1, 1, 1, 1)
+  cell.icon:Show()
+
+  if not responded then
+    cell.icon:SetTexture(STATUS_TEXTURES.waiting)
+    cell.text:SetTextColor(0.72, 0.72, 0.72, 1)
+    cell.background:SetColorTexture(0.055, 0.055, 0.055, 0.82)
+    SetBorderColor(cell, 0.30, 0.30, 0.30, 0.95)
+  elseif installed then
+    cell.icon:SetTexture(STATUS_TEXTURES.ready)
+    cell.text:SetTextColor(0.25, 1, 0.35, 1)
+    cell.background:SetColorTexture(0.025, 0.09, 0.035, 0.82)
+    SetBorderColor(cell, 0.18, 0.62, 0.25, 0.95)
+  else
+    cell.icon:SetTexture(STATUS_TEXTURES.notready)
+    cell.text:SetTextColor(1, 0.28, 0.28, 1)
+    cell.background:SetColorTexture(0.12, 0.025, 0.025, 0.82)
+    SetBorderColor(cell, 0.65, 0.08, 0.08, 0.95)
+  end
+end
+
 function MerfinPlus:SetReadyCheckT5Cell(cell, version, responded)
   version = responded and NormalizeReportedVersion(version) or nil
   local installed = version ~= nil
@@ -2326,25 +2413,7 @@ function MerfinPlus:SetReadyCheckT5Cell(cell, version, responded)
   cell.isDurability, cell.isVersion, cell.isT5Version, cell.isT6Version, cell.isExpiring = false, false, true, false, false
   cell.isT6AVersion = false
   cell.isOffline = false
-  cell.icon2:Hide()
-  cell.expiringIcon:Hide()
-  if installed then
-    cell.icon:SetTexture(STATUS_TEXTURES.ready)
-    cell.icon:SetVertexColor(1, 1, 1, 1)
-    cell.icon:Show()
-    cell.text:SetText("")
-    cell.text:SetTextColor(0.25, 1, 0.35, 1)
-    cell.background:SetColorTexture(0.025, 0.09, 0.035, 0.82)
-    SetBorderColor(cell, 0.18, 0.62, 0.25, 0.95)
-  else
-    cell.icon:SetTexture(STATUS_TEXTURES.notready)
-    cell.icon:SetVertexColor(1, 1, 1, 1)
-    cell.icon:Show()
-    cell.text:SetText("")
-    cell.text:SetTextColor(1, 0.28, 0.28, 1)
-    cell.background:SetColorTexture(0.12, 0.025, 0.025, 0.82)
-    SetBorderColor(cell, 0.65, 0.08, 0.08, 0.95)
-  end
+  ApplyReadyCheckPackStatus(cell, installed, responded)
 end
 
 function MerfinPlus:SetReadyCheckT6Cell(cell, version, responded)
@@ -2357,13 +2426,7 @@ function MerfinPlus:SetReadyCheckT6Cell(cell, version, responded)
   cell.isDurability, cell.isVersion, cell.isT5Version, cell.isT6Version, cell.isExpiring = false, false, false, true, false
   cell.isT6AVersion = false
   cell.isOffline = false
-  cell.icon2:Hide(); cell.expiringIcon:Hide()
-  cell.icon:SetTexture(installed and STATUS_TEXTURES.ready or STATUS_TEXTURES.notready)
-  cell.icon:SetVertexColor(1, 1, 1, 1); cell.icon:Show()
-  cell.text:SetText("")
-  cell.text:SetTextColor(installed and 0.25 or 1, installed and 1 or 0.28, installed and 0.35 or 0.28, 1)
-  cell.background:SetColorTexture(installed and 0.025 or 0.12, installed and 0.09 or 0.025, installed and 0.035 or 0.025, 0.82)
-  if installed then SetBorderColor(cell, 0.18, 0.62, 0.25, 0.95) else SetBorderColor(cell, 0.65, 0.08, 0.08, 0.95) end
+  ApplyReadyCheckPackStatus(cell, installed, responded)
 end
 
 function MerfinPlus:SetReadyCheckT6ACell(cell, version, responded)
@@ -2377,13 +2440,7 @@ function MerfinPlus:SetReadyCheckT6ACell(cell, version, responded)
   cell.isT6AVersion = true
   cell.isOffline = false
   if cell.auraIconButtons then SetReadyCheckAuraIconButtons(cell, nil, nil) end
-  cell.icon2:Hide(); cell.expiringIcon:Hide()
-  cell.icon:SetTexture(installed and STATUS_TEXTURES.ready or STATUS_TEXTURES.notready)
-  cell.icon:SetVertexColor(1, 1, 1, 1); cell.icon:Show()
-  cell.text:SetText("")
-  cell.text:SetTextColor(installed and 0.25 or 1, installed and 1 or 0.28, installed and 0.35 or 0.28, 1)
-  cell.background:SetColorTexture(installed and 0.025 or 0.12, installed and 0.09 or 0.025, installed and 0.035 or 0.025, 0.82)
-  if installed then SetBorderColor(cell, 0.18, 0.62, 0.25, 0.95) else SetBorderColor(cell, 0.65, 0.08, 0.08, 0.95) end
+  ApplyReadyCheckPackStatus(cell, installed, responded)
 end
 
 function MerfinPlus:RenderReadyCheckMember(member, options)
@@ -2614,6 +2671,69 @@ function MerfinPlus:CancelReadyCheckHideTimer()
   end
 end
 
+function MerfinPlus:CancelReadyCheckPackRequestTimers()
+  self.readyCheckPackRequestGeneration = (self.readyCheckPackRequestGeneration or 0) + 1
+  for _, timer in ipairs(self.readyCheckPackRequestTimers or {}) do
+    if timer and timer.Cancel then timer:Cancel() end
+  end
+  self.readyCheckPackRequestTimers = {}
+  self.readyCheckPackCollectionActive = false
+end
+
+function MerfinPlus:FinalizeReadyCheckPackResponses(generation)
+  if generation ~= self.readyCheckPackRequestGeneration
+    or not self.readyCheckActive
+    or not self.readyCheckFrame
+    or not self.readyCheckFrame:IsShown()
+  then
+    return
+  end
+
+  self.readyCheckPackCollectionActive = false
+  self.readyCheckT5Responded = self.readyCheckT5Responded or {}
+  self.readyCheckT6Responded = self.readyCheckT6Responded or {}
+  self.readyCheckT6AResponded = self.readyCheckT6AResponded or {}
+  for _, member in ipairs(self.readyCheckFrame.members or {}) do
+    if not IsReadyCheckMemberOffline(member) then
+      local key = member.nameKey
+      if self.readyCheckT5Responded[key] == nil then self.readyCheckT5Responded[key] = true end
+      if self.readyCheckT6Responded[key] == nil then self.readyCheckT6Responded[key] = true end
+      if self.readyCheckT6AResponded[key] == nil then self.readyCheckT6AResponded[key] = true end
+      self:RefreshReadyCheckMember(member.unit or member.name, {
+        t5Version = true,
+        t6Version = true,
+        t6AVersion = true,
+        layoutCells = true,
+      })
+    end
+  end
+end
+
+function MerfinPlus:ScheduleReadyCheckPackRequests()
+  self:CancelReadyCheckPackRequestTimers()
+  self.readyCheckPackCollectionActive = true
+  local generation = self.readyCheckPackRequestGeneration
+  if not (C_Timer and C_Timer.NewTimer) then return end
+
+  for _, delay in ipairs(PACK_REQUEST_RETRY_DELAYS) do
+    local timer = C_Timer.NewTimer(delay, function()
+      if generation == MerfinPlus.readyCheckPackRequestGeneration
+        and MerfinPlus.readyCheckActive
+        and MerfinPlus.readyCheckFrame
+        and MerfinPlus.readyCheckFrame:IsShown()
+      then
+        RequestMissingRaidPackVersions(MerfinPlus)
+      end
+    end)
+    self.readyCheckPackRequestTimers[#self.readyCheckPackRequestTimers + 1] = timer
+  end
+
+  local settleTimer = C_Timer.NewTimer(PACK_REQUEST_SETTLE_SECONDS, function()
+    MerfinPlus:FinalizeReadyCheckPackResponses(generation)
+  end)
+  self.readyCheckPackRequestTimers[#self.readyCheckPackRequestTimers + 1] = settleTimer
+end
+
 function MerfinPlus:ScheduleReadyCheckHide(seconds, updateCountdown)
   self:CancelReadyCheckHideTimer()
   if updateCountdown ~= false then
@@ -2664,17 +2784,18 @@ function MerfinPlus:RequestReadyCheckDurability()
     self.readyCheckVersionResponded[playerKey] = true
     local t5Version = NormalizeReportedVersion(GetLocalT5Version())
     self.readyCheckT5Versions[playerKey] = t5Version
-    self.readyCheckT5Responded[playerKey] = t5Version ~= nil
+    self.readyCheckT5Responded[playerKey] = true
     local t6Version = NormalizeReportedVersion(GetLocalT6Version())
     self.readyCheckT6Versions[playerKey] = t6Version
-    self.readyCheckT6Responded[playerKey] = t6Version ~= nil
+    self.readyCheckT6Responded[playerKey] = true
     local t6AVersion = NormalizeReportedVersion(GetLocalT6AssignmentsVersion())
     self.readyCheckT6AVersions[playerKey] = t6AVersion
-    self.readyCheckT6AResponded[playerKey] = t6AVersion ~= nil
+    self.readyCheckT6AResponded[playerKey] = true
   end
 
   SendAddonPayload("Q:" .. self.readyCheckNonce, channel)
   RequestRaidPackVersions()
+  self:ScheduleReadyCheckPackRequests()
 end
 
 function MerfinPlus:HandleReadyCheckAddonMessage(_, prefix, message, _, sender)
@@ -2697,13 +2818,14 @@ function MerfinPlus:HandleReadyCheckAddonMessage(_, prefix, message, _, sender)
       if localVersion and NormalizeName(sender) ~= NormalizeName(GetUnitFullName("player")) then
         SendT5Payload("WA:" .. pack .. ":" .. localVersion, "WHISPER", sender)
       end
-    elseif command == "WA" and supportedPack then
+    elseif command == "WA" and supportedPack and self.readyCheckPackCollectionActive then
       local senderKey = NormalizeName(sender)
       local versionsKey = pack == T5_PACK_KEY and "readyCheckT5Versions"
         or (pack == T6_PACK_KEY and "readyCheckT6Versions" or "readyCheckT6AVersions")
       local respondedKey = pack == T5_PACK_KEY and "readyCheckT5Responded"
         or (pack == T6_PACK_KEY and "readyCheckT6Responded" or "readyCheckT6AResponded")
       self[versionsKey] = self[versionsKey] or {}; self[respondedKey] = self[respondedKey] or {}
+      if self[respondedKey][senderKey] then return end
       self[versionsKey][senderKey] = NormalizeReportedVersion(version); self[respondedKey][senderKey] = true
       self:RefreshReadyCheckMember(sender, {
         t5Version = pack == T5_PACK_KEY,
@@ -2726,15 +2848,66 @@ function MerfinPlus:HandleReadyCheckAddonMessage(_, prefix, message, _, sender)
 
     self.readyCheckRespondedRequests = self.readyCheckRespondedRequests or {}
     local requestKey = NormalizeName(sender) .. ":" .. requestNonce
-    if self.readyCheckRespondedRequests[requestKey] then
+    local now = GetTime and GetTime() or 0
+    for key, sentAt in pairs(self.readyCheckRespondedRequests) do
+      if now - (tonumber(sentAt) or 0) > 60 then
+        self.readyCheckRespondedRequests[key] = nil
+      end
+    end
+    local previousResponse = self.readyCheckRespondedRequests[requestKey]
+    if previousResponse and now - previousResponse < 0.5 then
       return
     end
-    self.readyCheckRespondedRequests[requestKey] = GetTime()
+    self.readyCheckRespondedRequests[requestKey] = now
 
     local durability = CalculateLocalDurability()
     local durabilityToken = durability ~= nil and tostring(durability) or "x"
     local version = EncodeAddonVersion(GetCanonicalAddonVersion())
+    local t5Version = EncodePackVersion(GetLocalT5Version())
+    local t6Version = EncodePackVersion(GetLocalT6Version())
+    local t6AVersion = EncodePackVersion(GetLocalT6AssignmentsVersion())
+    -- Keep the established D response unchanged for older MerfinPlus clients.
+    -- Pack presence is a separate nonce-bound response understood by newer
+    -- clients, while MERFIN_VC remains available to WeakAura bridges.
     SendAddonPayload(string.format("D:%s:b%s:v%s", requestNonce, durabilityToken, version), "WHISPER", sender)
+    SendAddonPayload(
+      string.format("P:%s:t5%s:t6%s:t6a%s", requestNonce, t5Version, t6Version, t6AVersion),
+      "WHISPER",
+      sender
+    )
+    return
+  end
+
+  local packNonce, remoteT5, remoteT6, remoteT6A =
+    message:match("^P:([%w]+):t5([^:]+):t6([^:]+):t6a([^:]+)$")
+  if packNonce then
+    if packNonce ~= self.readyCheckNonce then return end
+    if (remoteT5 ~= "x" and not NormalizeReportedVersion(remoteT5))
+      or (remoteT6 ~= "x" and not NormalizeReportedVersion(remoteT6))
+      or (remoteT6A ~= "x" and not NormalizeReportedVersion(remoteT6A))
+    then
+      return
+    end
+
+    local senderKey = NormalizeName(sender)
+    self.readyCheckT5Versions = self.readyCheckT5Versions or {}
+    self.readyCheckT5Responded = self.readyCheckT5Responded or {}
+    self.readyCheckT6Versions = self.readyCheckT6Versions or {}
+    self.readyCheckT6Responded = self.readyCheckT6Responded or {}
+    self.readyCheckT6AVersions = self.readyCheckT6AVersions or {}
+    self.readyCheckT6AResponded = self.readyCheckT6AResponded or {}
+    self.readyCheckT5Versions[senderKey] = DecodePackVersion(remoteT5)
+    self.readyCheckT5Responded[senderKey] = true
+    self.readyCheckT6Versions[senderKey] = DecodePackVersion(remoteT6)
+    self.readyCheckT6Responded[senderKey] = true
+    self.readyCheckT6AVersions[senderKey] = DecodePackVersion(remoteT6A)
+    self.readyCheckT6AResponded[senderKey] = true
+    self:RefreshReadyCheckMember(sender, {
+      t5Version = true,
+      t6Version = true,
+      t6AVersion = true,
+      layoutCells = true,
+    })
     return
   end
 

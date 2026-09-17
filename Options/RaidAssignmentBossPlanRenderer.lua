@@ -279,18 +279,25 @@ MerfinPlus.BossPlanFacingGeometryContract = {
 -- read-only metadata. No field is removed from the decoded/stored envelope.
 MerfinPlus.MGMRA4BossPlanRendererFieldCoverage = {
   type = "rendered", x = "rendered", y = "rendered", player = "rendered",
+  playerIconRole = "rendered", playerNameVisible = "rendered",
   label = "rendered", rotation = "rendered", bossFacingVisible = "rendered",
   bossFacingArrowVisible = "rendered", bossFacingColor = "rendered", bossFacingRingWidth = "rendered",
   color = "rendered", marker = "rendered", assetId = "rendered", role = "rendered",
-  wowClass = "rendered", wowIcon = "rendered", spellId = "rendered", size = "rendered",
+  wowClass = "rendered", wowSpec = "rendered", wowIcon = "rendered", spellId = "rendered", size = "rendered",
   arrowLength = "rendered", width = "rendered", height = "rendered", fill = "rendered",
   fillColor = "rendered", fillOpacity = "rendered", strokeColor = "rendered",
-  strokeWidth = "rendered", textColor = "rendered", textFont = "rendered",
+  strokeWidth = "rendered", shapeGeometry = "rendered", coneRadius = "rendered", coneAngle = "rendered",
+  lineStart = "rendered", lineEnd = "rendered", lineOpacity = "rendered",
+  lineOutline = "rendered", lineOutlineColor = "rendered", lineOutlineWidth = "rendered",
+  textColor = "rendered", textFont = "rendered",
   textAlign = "rendered", textVerticalAlign = "rendered", textSizing = "rendered",
   textBackdrop = "rendered", textBold = "rendered", textItalic = "rendered",
   textUnderline = "rendered", textStrikethrough = "rendered", textSize = "rendered",
   textStroke = "rendered", textStrokeColor = "rendered", textStrokeWidth = "rendered",
-  positionRole = "metadata", rolePosition = "rendered", rolePositionVisible = "rendered", specialAssignmentKey = "metadata",
+  positionRole = "metadata", rolePosition = "rendered", mapPosition = "rendered",
+  positionSlotId = "metadata", positionAssignMode = "metadata", positionClass = "metadata",
+  positionLabelPosition = "rendered", positionLabelGap = "rendered",
+  rolePositionVisible = "rendered", specialAssignmentKey = "metadata",
   drawingMode = "rendered", drawingPoints = "rendered", drawingWidth = "rendered",
   drawingHeight = "rendered", drawingFadeOut = "rendered", centerDot = "rendered",
   polygonSides = "rendered", pinnedTo = "rendered", facing = "rendered", locked = "metadata",
@@ -549,8 +556,36 @@ local function BuildShapePath(kind)
   return { { 0, 0 }, { 100, 0 }, { 100, 100 }, { 0, 100 } }, { 1, 2, 3, 4 }
 end
 
+local function BuildCanvasShapePath(element)
+  local kind = element.type
+  if kind == "box" then
+    return { { 0, 0 }, { 100, 0 }, { 100, 100 }, { 0, 100 } }, { 1, 2, 3, 4 }
+  elseif kind == "circle" then
+    local points, segments = {}, 96
+    for index = 0, segments - 1 do
+      local angle = -math.pi / 2 + (math.pi * 2 * index / segments)
+      points[#points + 1] = { 50 + math.cos(angle) * 50, 50 + math.sin(angle) * 50 }
+    end
+    return points
+  elseif kind == "triangle" then
+    return { { 50, 0 }, { 100, 100 }, { 0, 100 } }, { 1, 2, 3 }
+  elseif kind == "cone" then
+    local angle = Clamp(element.coneAngle == nil and 90 or element.coneAngle, 1, 359)
+    local halfAngle = angle * math.pi / 360
+    local segments = math.max(16, math.min(120, math.ceil(angle / 3)))
+    local points = { { 50, 50 } }
+    for index = 0, segments do
+      local radians = -halfAngle + (halfAngle * 2 * index / segments)
+      points[#points + 1] = { 50 + math.cos(radians) * 50, 50 + math.sin(radians) * 50 }
+    end
+    return points, { 1, 2, #points }
+  end
+  return BuildShapePath(kind)
+end
+
 MerfinPlus.BossPlanShapeGeometryContract = {
   BuildPath = BuildShapePath,
+  BuildCanvasPath = BuildCanvasShapePath,
   fillMasks = SHAPE_TEXTURES,
 }
 
@@ -604,6 +639,14 @@ local function AddPolygonFill(frame, kind, shapePath, width, height, color, opac
   return texture
 end
 
+local function AddCanvasPolygonFill(frame, shapePath, width, height, color, opacity, subLayer)
+  for _, span in ipairs(ShapeFillSpans(shapePath, 128)) do
+    AddSolidRect(frame, span[1] / 100 * width, span[3] / 100 * height,
+      math.max(0.5, (span[2] - span[1]) / 100 * width),
+      ((span[4] - span[3]) / 100 * height) + 0.15, color, opacity, subLayer or -2)
+  end
+end
+
 local function AddShapeOutline(frame, points, corners, width, height, strokeWidth, strokeColor)
   for index = 1, #points do
     local first = points[index]
@@ -619,19 +662,33 @@ local function AddShapeOutline(frame, points, corners, width, height, strokeWidt
 end
 
 local function AddShape(frame, element, width, height)
+  local canvasGeometry = element.shapeGeometry == "canvas"
   local strokeColor = element.strokeColor or "#02060b"
-  local strokeWidth = Clamp(element.strokeWidth == nil and 2 or element.strokeWidth, 1, 12)
+  local strokeWidth = Clamp(element.strokeWidth == nil and 2 or element.strokeWidth, 0, canvasGeometry and 200 or 12)
   local fillColor = element.fillColor or "#ffffff"
-  local fillOpacity = math.max(0, math.min(100, element.fillOpacity or 30)) / 100
+  local fillOpacity = math.max(0, math.min(100,
+    element.fillOpacity == nil and (canvasGeometry and 40 or 30) or element.fillOpacity)) / 100
   local kind = element.type
-  local shapePath, corners = BuildShapePath(kind)
-  if element.fill then
-    AddPolygonFill(frame, kind, shapePath, width, height, fillColor, fillOpacity)
+  local shapePath, corners
+  if canvasGeometry then
+    shapePath, corners = BuildCanvasShapePath(element)
+  else
+    shapePath, corners = BuildShapePath(kind)
   end
-  AddShapeOutline(frame, shapePath, corners, width, height, strokeWidth, strokeColor)
+  if element.fill then
+    if canvasGeometry then AddCanvasPolygonFill(frame, shapePath, width, height, fillColor, fillOpacity)
+    else AddPolygonFill(frame, kind, shapePath, width, height, fillColor, fillOpacity) end
+  end
+  if strokeWidth > 0 then AddShapeOutline(frame, shapePath, corners, width, height, strokeWidth, strokeColor) end
   if element.centerDot then
     AddRoundJoin(frame, width / 2, height / 2, 8, strokeColor, 1, 2)
   end
+end
+
+local function RoleIconPath(role)
+  local normalized = Normalize(role)
+  local file = (normalized == "tank" and "tank") or (normalized == "heal" and "heal") or "dps"
+  return ADDON_ROOT .. "icons\\Roles\\" .. file .. ".tga"
 end
 
 local function ResolveIconPath(element)
@@ -640,12 +697,13 @@ local function ResolveIconPath(element)
     return asset and asset.runtimePath
   end
   if element.role then
-    local role = Normalize(element.role)
-    local file = (role == "tank" and "tank") or (role == "heal" and "heal") or "dps"
-    return ADDON_ROOT .. "icons\\Roles\\" .. file .. ".tga"
+    return RoleIconPath(element.role)
   end
   if element.wowClass then
     local token = CLASS_TOKENS[Normalize(element.wowClass)]
+    if token and Normalize(element.wowSpec) ~= "" then
+      return MerfinPlus:GetRaidAssignmentSpecIconPath(token, element.wowSpec)
+    end
     return token and (ADDON_ROOT .. "icons\\Classes\\" .. token .. ".tga")
   end
   if element.wowIcon then
@@ -831,6 +889,53 @@ local function AddStyledText(frame, element, text, width, height, fallbackSize)
   return font
 end
 
+local function AddDashedRing(frame, centerX, centerY, radius, thickness, color, alpha, subLayer)
+  local segments = 32
+  for index = 0, segments - 1, 2 do
+    local startAngle = math.pi * 2 * index / segments
+    local endAngle = math.pi * 2 * (index + 1) / segments
+    AddLine(frame,
+      centerX + math.cos(startAngle) * radius, centerY + math.sin(startAngle) * radius,
+      centerX + math.cos(endAngle) * radius, centerY + math.sin(endAngle) * radius,
+      thickness, color, alpha, subLayer)
+  end
+end
+
+local function RenderPositionSlot(frame, element, width, height)
+  local scale = (element.size or 100) / 100
+  local diameter = math.max(4, math.min(width, height) - (2 * scale))
+  local centerX, centerY = width / 2, height / 2
+  AddRoundJoin(frame, centerX, centerY, diameter, "#1a1c20", 0.86, 0)
+  AddDashedRing(frame, centerX, centerY, diameter / 2, math.max(1, 2 * scale), "#9ca4ad", 1, 2)
+
+  local numberStyle = {
+    textBold = true, textColor = element.textColor or "#f3f7ff",
+    textSize = math.max(8, 20 * scale), textAlign = "center", textVerticalAlign = "middle",
+  }
+  AddStyledText(frame, numberStyle, tostring(element.rolePosition or "#"), width, height, 20 * scale)
+
+  if element.label and element.label ~= "" then
+    local labelStyle = DeepCopy(element)
+    labelStyle.textSize = (element.textSize or 12) * scale
+    labelStyle.textAlign = "center"
+    labelStyle.textVerticalAlign = "middle"
+    local labelWidth, labelHeight = math.max(80, 240 * scale), math.max(14, 20 * scale)
+    local label = AddStyledText(frame, labelStyle, element.label, labelWidth, labelHeight, 12 * scale)
+    local gap = (element.positionLabelGap == nil and 4 or element.positionLabelGap) * scale
+    label:ClearAllPoints()
+    local position = element.positionLabelPosition or "bottom"
+    if position == "top" then
+      label:SetPoint("BOTTOM", frame, "TOP", 0, gap)
+    elseif position == "left" then
+      label:SetPoint("RIGHT", frame, "LEFT", -gap, 0)
+    elseif position == "right" then
+      label:SetPoint("LEFT", frame, "RIGHT", gap, 0)
+    else
+      label:SetPoint("TOP", frame, "BOTTOM", 0, -gap)
+    end
+  end
+end
+
 local function AddNumberOverlay(frame, value, anchor)
   local label = AcquireRegion(frame, "font", function() return frame:CreateFontString(nil, "OVERLAY") end)
   label:ClearAllPoints()
@@ -854,7 +959,9 @@ local function ResolveElementTransform(elements, sourceIndex)
   if element.facing ~= nil then
     local target = elements[element.facing + 1]
     if target then
-      rotation = Atan2(target.y - y, target.x - x) * 180 / math.pi
+      local deltaY = target.y - y
+      if element.shapeGeometry == "canvas" then deltaY = deltaY * CANVAS_HEIGHT / CANVAS_WIDTH end
+      rotation = Atan2(deltaY, target.x - x) * 180 / math.pi
     end
   end
   return x, y, rotation
@@ -862,10 +969,25 @@ end
 
 local function ElementDimensions(element)
   local scale = (element.size or 100) / 100
+  if element.shapeGeometry == "canvas" and element.type == "cone" then
+    local diameter = CANVAS_WIDTH * (element.coneRadius or 12) / 100 * 2 * scale
+    return diameter, diameter
+  end
   if element.width ~= nil or element.height ~= nil then
-    local widthPercent = math.max(1, element.width or element.height or 8)
-    local heightPercent = math.max(1, element.height or element.width or 8)
+    local minimum = element.shapeGeometry == "canvas" and 0.01 or 1
+    local widthPercent = math.max(minimum, element.width or element.height or 8)
+    local heightPercent = math.max(minimum, element.height or element.width or 8)
     return CANVAS_WIDTH * widthPercent / 100 * scale, CANVAS_HEIGHT * heightPercent / 100 * scale
+  end
+  if element.shapeGeometry == "canvas"
+    and (element.type == "arrow" or element.type == "arrow-down" or element.type == "line")
+  then
+    local thickness = math.max(0, element.strokeWidth == nil and 6 or element.strokeWidth) * scale
+    local outline = element.lineOutline and math.max(0, element.lineOutlineWidth or 2) * scale or 0
+    local capLength = math.max(10 * scale, thickness * 2.5)
+    local capSpread = capLength * 0.55
+    return CANVAS_WIDTH * (element.arrowLength or 12) / 100 * scale,
+      math.max(24 * scale, (capSpread * 2) + thickness + (outline * 2))
   end
   if (element.type == "arrow" or element.type == "arrow-down" or element.type == "line") and element.arrowLength then
     local hitHeight = math.max(24, 24 * scale, (element.strokeWidth or 2) + 12)
@@ -880,7 +1002,7 @@ local function ElementDimensions(element)
       CANVAS_HEIGHT * math.max(0.8, element.drawingHeight or 0.8) / 100 * scale
   end
   local sizes = {
-    player = { 56, 52 }, text = { 160, 36 }, emoji = { 48, 48 }, arrow = { 48, 48 },
+    player = { 56, 52 }, ["position-slot"] = { 44, 44 }, text = { 160, 36 }, emoji = { 48, 48 }, arrow = { 48, 48 },
     ["arrow-down"] = { 48, 48 }, line = { 48, 24 }, box = { 48, 48 }, circle = { 48, 48 },
     triangle = { 48, 48 }, cone = { 48, 48 }, ["raid-marker"] = { 32, 32 },
     boss = { 64, 64 }, image = { 52, 52 }, drawing = { 6, 6 },
@@ -920,6 +1042,38 @@ local function RenderDrawing(frame, element, width, height)
   end
 end
 
+local function AddLegacyLineCap(frame, kind, x, y, otherX, otherY, thickness, color, alpha)
+  if not kind or kind == "none" then return end
+  local dx, dy = otherX - x, otherY - y
+  local length = math.sqrt(dx * dx + dy * dy)
+  if length <= 0 then return end
+  local unitX, unitY = dx / length, dy / length
+  local normalX, normalY = -unitY, unitX
+  local capLength = math.max(6, thickness * 3)
+  local spread = capLength * 0.55
+  local backX, backY = x + unitX * capLength, y + unitY * capLength
+  local firstX, firstY = backX + normalX * spread, backY + normalY * spread
+  local secondX, secondY = backX - normalX * spread, backY - normalY * spread
+  if kind == "arrow" then
+    AddLine(frame, firstX, firstY, x, y, thickness, color, alpha, 3)
+    AddLine(frame, x, y, secondX, secondY, thickness, color, alpha, 3)
+  elseif kind == "solid" then
+    local fillWidth = math.max(1, spread / 4)
+    for step = 0, 8 do
+      local ratio = step / 8
+      AddLine(frame, x, y,
+        firstX + (secondX - firstX) * ratio,
+        firstY + (secondY - firstY) * ratio,
+        fillWidth, color, alpha, 3)
+    end
+  elseif kind == "circle" then
+    AddEndpoint(frame, x, y, math.max(7, thickness * 2), color, alpha, 3)
+  elseif kind == "bar" then
+    AddLine(frame, x - normalX * spread, y - normalY * spread,
+      x + normalX * spread, y + normalY * spread, thickness, color, alpha, 3)
+  end
+end
+
 local function RenderArrow(frame, element, width, height)
   local color = element.strokeColor or element.color or "#02060b"
   local thickness = Clamp(element.strokeWidth == nil and 2 or element.strokeWidth, 0, 12)
@@ -942,8 +1096,13 @@ local function RenderArrow(frame, element, width, height)
   AddLine(frame, x1, y1, x2, y2, thickness, color, alpha)
   local endpointSize = math.max(4, thickness + 2)
   if element.type == "line" then
-    AddEndpoint(frame, x1, y1, endpointSize, color, alpha, 2)
-    AddEndpoint(frame, x2, y2, endpointSize, color, alpha, 2)
+    if element.lineStart ~= nil or element.lineEnd ~= nil then
+      AddLegacyLineCap(frame, element.lineStart or "none", x1, y1, x2, y2, thickness, color, alpha)
+      AddLegacyLineCap(frame, element.lineEnd or "none", x2, y2, x1, y1, thickness, color, alpha)
+    else
+      AddEndpoint(frame, x1, y1, endpointSize, color, alpha, 2)
+      AddEndpoint(frame, x2, y2, endpointSize, color, alpha, 2)
+    end
   else
     AddEndpoint(frame, x1, y1, endpointSize, color, alpha, 2)
     local angle = Atan2(y2 - y1, x2 - x1)
@@ -952,6 +1111,95 @@ local function RenderArrow(frame, element, width, height)
     AddLine(frame, x2, y2, x2 - math.cos(angle - 0.65) * head, y2 - math.sin(angle - 0.65) * head, thickness, color, alpha)
     AddLine(frame, x2, y2, x2 - math.cos(angle + 0.65) * head, y2 - math.sin(angle + 0.65) * head, thickness, color, alpha)
   end
+end
+
+local function AddFilledPolygonPixels(frame, points, color, alpha, subLayer)
+  local minX, maxX, minY, maxY
+  for _, point in ipairs(points) do
+    minX = not minX and point[1] or math.min(minX, point[1])
+    maxX = not maxX and point[1] or math.max(maxX, point[1])
+    minY = not minY and point[2] or math.min(minY, point[2])
+    maxY = not maxY and point[2] or math.max(maxY, point[2])
+  end
+  local width, height = (maxX or 0) - (minX or 0), (maxY or 0) - (minY or 0)
+  if width <= 0 or height <= 0 then return end
+  local normalized = {}
+  for index, point in ipairs(points) do
+    normalized[index] = { (point[1] - minX) / width * 100, (point[2] - minY) / height * 100 }
+  end
+  local strips = math.max(8, math.min(64, math.ceil(height)))
+  for _, span in ipairs(ShapeFillSpans(normalized, strips)) do
+    AddSolidRect(frame, minX + span[1] / 100 * width, minY + span[3] / 100 * height,
+      math.max(0.5, (span[2] - span[1]) / 100 * width),
+      ((span[4] - span[3]) / 100 * height) + 0.1, color, alpha, subLayer)
+  end
+end
+
+local function AddCircleOutline(frame, centerX, centerY, radius, thickness, color, alpha, subLayer)
+  if thickness <= 0 or radius <= 0 then return end
+  local segments = 32
+  local previousX, previousY
+  for index = 0, segments do
+    local angle = math.pi * 2 * index / segments
+    local x, y = centerX + math.cos(angle) * radius, centerY + math.sin(angle) * radius
+    if previousX then AddLine(frame, previousX, previousY, x, y, thickness, color, alpha, subLayer) end
+    previousX, previousY = x, y
+  end
+end
+
+local function AddCanvasLineCap(frame, kind, x, centerY, startCap, thickness, color, alpha, outlineWidth, scale, subLayer)
+  if not kind or kind == "none" then return end
+  local direction = startCap and 1 or -1
+  local length = math.max(10 * scale, thickness * 2.5)
+  local spread = length * 0.55
+  local paintedThickness = thickness + (outlineWidth * 2)
+  local backX = x + direction * length
+  if kind == "arrow" then
+    if paintedThickness <= 0 then return end
+    AddLine(frame, backX, centerY - spread, x, centerY, paintedThickness, color, alpha, subLayer)
+    AddLine(frame, x, centerY, backX, centerY + spread, paintedThickness, color, alpha, subLayer)
+  elseif kind == "solid" then
+    local points = { { x, centerY }, { backX, centerY - spread }, { backX, centerY + spread } }
+    AddFilledPolygonPixels(frame, points, color, alpha, subLayer)
+    if outlineWidth > 0 then
+      local edge = outlineWidth * 2
+      AddLine(frame, points[1][1], points[1][2], points[2][1], points[2][2], edge, color, alpha, subLayer)
+      AddLine(frame, points[2][1], points[2][2], points[3][1], points[3][2], edge, color, alpha, subLayer)
+      AddLine(frame, points[3][1], points[3][2], points[1][1], points[1][2], edge, color, alpha, subLayer)
+    end
+  elseif kind == "circle" then
+    AddCircleOutline(frame, x, centerY, math.max(5 * scale, thickness), paintedThickness, color, alpha, subLayer)
+  elseif kind == "bar" and paintedThickness > 0 then
+    AddLine(frame, x, centerY - spread, x, centerY + spread, paintedThickness, color, alpha, subLayer)
+  end
+end
+
+local function RenderCanvasSegment(frame, element, width, height)
+  local scale = (element.size or 100) / 100
+  local color = element.strokeColor or element.color or "#ffffff"
+  local thickness = math.max(0, element.strokeWidth == nil and 6 or element.strokeWidth) * scale
+  local alpha = Clamp((element.lineOpacity == nil and 100 or element.lineOpacity) / 100, 0, 1)
+  local outlineWidth = element.lineOutline and math.max(0, element.lineOutlineWidth or 2) * scale or 0
+  local outlineColor = element.lineOutlineColor or "#000000"
+  local startCap = element.lineStart or "none"
+  local endCap = element.lineEnd or (element.type == "line" and "none" or "arrow")
+  local x1, x2, centerY = 0, width, height / 2
+
+  if outlineWidth > 0 then
+    local outlineThickness = thickness + (outlineWidth * 2)
+    AddLine(frame, x1, centerY, x2, centerY, outlineThickness, outlineColor, alpha, 0)
+    AddRoundJoin(frame, x1, centerY, outlineThickness, outlineColor, alpha, 0)
+    AddRoundJoin(frame, x2, centerY, outlineThickness, outlineColor, alpha, 0)
+    AddCanvasLineCap(frame, startCap, x1, centerY, true, thickness, outlineColor, alpha, outlineWidth, scale, 0)
+    AddCanvasLineCap(frame, endCap, x2, centerY, false, thickness, outlineColor, alpha, outlineWidth, scale, 0)
+  end
+  if thickness > 0 then
+    AddLine(frame, x1, centerY, x2, centerY, thickness, color, alpha, 2)
+    AddRoundJoin(frame, x1, centerY, thickness, color, alpha, 2)
+    AddRoundJoin(frame, x2, centerY, thickness, color, alpha, 2)
+  end
+  AddCanvasLineCap(frame, startCap, x1, centerY, true, thickness, color, alpha, 0, scale, 3)
+  AddCanvasLineCap(frame, endCap, x2, centerY, false, thickness, color, alpha, 0, scale, 3)
 end
 
 local function CursorCanvasPosition(viewer)
@@ -1004,6 +1252,8 @@ local function BeginElementDrag(viewer, element, sourceIndex, mode, direction, h
     centerX, centerY = ResolveElementTransform(viewer.currentPlan.elements, sourceIndex)
   end
   viewer.selectedElementIndex = sourceIndex
+  local canvasRadialResize = element.shapeGeometry == "canvas"
+    and (element.type == "cone" or element.type == "line" or element.type == "arrow" or element.type == "arrow-down")
   viewer.elementDrag = {
     index = sourceIndex, element = element, mode = mode, direction = direction, handle = handle, frame = elementFrame or handle,
     startX = cursorX, startY = cursorY, x = element.x, y = element.y,
@@ -1018,7 +1268,8 @@ local function BeginElementDrag(viewer, element, sourceIndex, mode, direction, h
     effectiveWidth = effectiveWidth, effectiveHeight = effectiveHeight,
     left = element.x - effectiveWidth / 2, right = element.x + effectiveWidth / 2,
     top = element.y - effectiveHeight / 2, bottom = element.y + effectiveHeight / 2,
-    dimensionResize = element.width ~= nil or element.height ~= nil or DIMENSION_RESIZE_TYPES[element.type] == true,
+    dimensionResize = not canvasRadialResize
+      and (element.width ~= nil or element.height ~= nil or DIMENSION_RESIZE_TYPES[element.type] == true),
   }
   viewer.drawCapture = false
   viewer.eraseCapture = false
@@ -1742,7 +1993,9 @@ local function RenderElement(viewer, element, sourceIndex, elements)
     local player = element.player or {}
     local token = CLASS_TOKENS[Normalize(player.class)]
     local iconPath
-    if token and Normalize(player.spec) ~= "" then
+    if element.playerIconRole then
+      iconPath = RoleIconPath(element.playerIconRole)
+    elseif token and Normalize(player.spec) ~= "" then
       iconPath = MerfinPlus:GetRaidAssignmentSpecIconPath(token, player.spec)
     elseif token then
       iconPath = ADDON_ROOT .. "icons\\Classes\\" .. token .. ".tga"
@@ -1750,16 +2003,21 @@ local function RenderElement(viewer, element, sourceIndex, elements)
     local iconSize = 34 * (element.size or 100) / 100
     local icon = AddImage(frame, iconPath or "Interface\\Icons\\INV_Misc_QuestionMark", iconSize, iconSize)
     ApplyCircularIconMask(frame, icon, iconSize, iconSize)
-    local labelElement = { textBold = true, textColor = CLASS_TONES[token] or "#c7d7eb", textSize = 11 * (element.size or 100) / 100, textAlign = "center" }
-    local label = AddStyledText(frame, labelElement, player.name or "Player", width, 16, 11)
-    label:ClearAllPoints()
-    label:SetPoint("TOP", frame, "CENTER", 0, -(18 * (element.size or 100) / 100))
-    if element.rolePosition and element.rolePositionVisible ~= false then AddNumberOverlay(frame, element.rolePosition, icon) end
+    if element.playerNameVisible ~= false then
+      local labelElement = { textBold = true, textColor = CLASS_TONES[token] or "#c7d7eb", textSize = 11 * (element.size or 100) / 100, textAlign = "center" }
+      local label = AddStyledText(frame, labelElement, player.name or "Player", width, 16, 11)
+      label:ClearAllPoints()
+      label:SetPoint("TOP", frame, "CENTER", 0, -(18 * (element.size or 100) / 100))
+    end
+    local position = element.mapPosition or element.rolePosition
+    if position and element.rolePositionVisible ~= false then AddNumberOverlay(frame, position, icon) end
     if not viewer.editing and not viewer.selfHighlightAssigned
       and PlayerNamesMatch(player.name, UnitName and UnitName("player")) then
       viewer.selfHighlightAssigned = true
       ShowCurrentPlayerHighlight(frame, width, height)
     end
+  elseif element.type == "position-slot" then
+    RenderPositionSlot(frame, element, width, height)
   elseif element.type == "text" then
     AddStyledText(frame, element, element.label or "", width, height, 28)
   elseif element.type == "emoji" then
@@ -1771,7 +2029,8 @@ local function RenderElement(viewer, element, sourceIndex, elements)
       AddStyledText(frame, element, element.label, width * 0.88, height * 0.88, 14)
     end
   elseif element.type == "arrow" or element.type == "arrow-down" or element.type == "line" then
-    RenderArrow(frame, element, width, height)
+    if element.shapeGeometry == "canvas" then RenderCanvasSegment(frame, element, width, height)
+    else RenderArrow(frame, element, width, height) end
   elseif element.type == "raid-marker" then
     local marker = RAID_MARKERS[Normalize(element.marker)]
     AddImage(frame, marker and ("Interface\\TargetingFrame\\UI-RaidTargetingIcon_" .. marker) or "Interface\\Icons\\INV_Misc_QuestionMark", width, height)
@@ -2280,6 +2539,7 @@ local function CreateViewer(owner)
   viewer.canvas = CreateFrame("Frame", nil, viewer)
   viewer.canvas:SetSize(CANVAS_WIDTH, CANVAS_HEIGHT)
   viewer.canvas:SetPoint("BOTTOMLEFT", viewer, "BOTTOMLEFT", 14, 14)
+  if viewer.canvas.SetClipsChildren then viewer.canvas:SetClipsChildren(true) end
   viewer.canvas:EnableMouse(true)
   viewer.background = viewer.canvas:CreateTexture(nil, "BACKGROUND")
   viewer.background:SetAllPoints(viewer.canvas)
@@ -3381,6 +3641,7 @@ local function CreateQuickOverview(owner)
   quick.canvas = CreateFrame("Frame", nil, quick)
   quick.canvas:SetSize(CANVAS_WIDTH, CANVAS_HEIGHT)
   quick.canvas:SetPoint("BOTTOMLEFT", quick, "BOTTOMLEFT", QUICK_OVERVIEW_CHROME / 2, QUICK_OVERVIEW_CHROME / 2)
+  if quick.canvas.SetClipsChildren then quick.canvas:SetClipsChildren(true) end
   quick.background = quick.canvas:CreateTexture(nil, "BACKGROUND")
   quick.background:SetAllPoints(quick.canvas)
 

@@ -1145,14 +1145,18 @@ local function GetCurrentPlayerAssignmentRows()
       local playerMap = MerfinPlus:BuildRaidAssignmentPlayerMap(boss)
       local visibleSections = {}
       for _, section in ipairs(MerfinPlus:GetRaidAssignmentSections(boss)) do
-        local personalRows = {}
-        for _, task in ipairs(section.rows or {}) do
-          if MerfinPlus:IsRaidAssignmentTaskVisibleToPlayer(task, playerName) then
-            personalRows[#personalRows + 1] = task
+        if not MerfinPlus.IsRaidAssignmentSectionVisibleInUI
+          or MerfinPlus:IsRaidAssignmentSectionVisibleInUI(section)
+        then
+          local personalRows = {}
+          for _, task in ipairs(section.rows or {}) do
+            if MerfinPlus:IsRaidAssignmentTaskVisibleToPlayer(task, playerName) then
+              personalRows[#personalRows + 1] = task
+            end
           end
-        end
-        if #personalRows > 0 then
-          visibleSections[#visibleSections + 1] = { section = section, rows = personalRows }
+          if #personalRows > 0 then
+            visibleSections[#visibleSections + 1] = { section = section, rows = personalRows }
+          end
         end
       end
       if #visibleSections > 0 then

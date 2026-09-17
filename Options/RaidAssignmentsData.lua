@@ -483,6 +483,24 @@ function MerfinPlus:BuildRaidAssignmentAdditionalOverview(parsed, group)
   }
 end
 
+local function ParsedHasBossPlan(parsed, boss)
+  if type(parsed) ~= "table" or type(boss) ~= "table" then return false end
+  local candidates = {}
+  for _, value in ipairs({ boss.key, boss.name }) do
+    local normalized = NormalizeName(value)
+    if normalized ~= "" then candidates[#candidates + 1] = normalized end
+  end
+  for _, plan in ipairs(parsed.bossPlans or {}) do
+    local planBoss = NormalizeName(plan and plan.boss)
+    if planBoss ~= "" then
+      for _, candidate in ipairs(candidates) do
+        if candidate == planBoss or candidate:find(planBoss, 1, true) then return true end
+      end
+    end
+  end
+  return false
+end
+
 function MerfinPlus:BuildRaidAssignmentNavigation(parsed, group)
   local navigation = {}
   if not parsed or not group then return navigation end
@@ -494,7 +512,7 @@ function MerfinPlus:BuildRaidAssignmentNavigation(parsed, group)
       key = RaidAssignmentNavigationKey(kind, group.id, raidKey, boss and boss.key),
       title = title or tostring(boss and boss.name or "Raid Assignments"),
       boss = boss,
-      importedBoss = importedBoss or boss,
+      importedBoss = importedBoss,
       raid = raid,
     }
   end
@@ -519,7 +537,7 @@ function MerfinPlus:BuildRaidAssignmentNavigation(parsed, group)
     end
     for _, catalogBoss in ipairs(raid.bosses or {}) do
       local importedBoss = self:GetRaidAssignmentBoss(parsed, catalogBoss)
-      if importedBoss then
+      if importedBoss or ParsedHasBossPlan(parsed, catalogBoss) then
         raidEntries[#raidEntries + 1] = {
           kind = "boss", boss = catalogBoss, importedBoss = importedBoss,
           title = catalogBoss.localeID and self.GetLocalizedBossName
@@ -2209,6 +2227,47 @@ function MerfinPlus:GetRaidAssignmentSections(boss)
   return sections
 end
 
+local function IsIllidanPhaseTwoMeleePositionSection(section)
+  local context = section and section.context or {}
+  local bossName = NormalizeName(context.bossName or (context.boss and context.boss.name))
+  local phase = NormalizeName(context.phase)
+  local sectionName = NormalizeName(section and (section.name or section.sourceName))
+  local isIllidan = bossName == "illidan" or bossName == "illidanstormrage"
+  local isPhaseTwo = phase == "2" or sectionName:find("phase2", 1, true) ~= nil
+  return isIllidan and isPhaseTwo and sectionName:find("meleeposition", 1, true) ~= nil
+end
+
+local function IsIndividualMeleeOrRangedPositionSection(section)
+  -- Only canonical position cards are redundant with the visual Boss Plan.
+  -- Illidan's phase mechanics intentionally use utility cards (including the
+  -- Phase 2 melee positioning special case) and must remain visible both here
+  -- and in the personal Assignment Widget.
+  if IsIllidanPhaseTwoMeleePositionSection(section) then return false end
+  if not section or NormalizeName(section.kind) ~= "position" then return false end
+  local sectionRole
+  for _, rowData in ipairs(section.rows or {}) do
+    local task = rowData.task or rowData
+    local role = NormalizeName(task and task.role)
+    if role == "melee" or role == "ranged" then
+      if sectionRole and sectionRole ~= role then return false end
+      sectionRole = role
+    elseif role ~= "" then
+      return false
+    end
+  end
+  if sectionRole == "melee" or sectionRole == "ranged" then return true end
+
+  -- Support canonical position cards from older imports that predate roles.
+  -- Do not apply this name fallback to utility/special cards (see above).
+  local sectionName = NormalizeName(section.name or section.sourceName)
+  return (sectionName:find("meleeposition", 1, true) ~= nil)
+    or (sectionName:find("rangedposition", 1, true) ~= nil)
+end
+
+function MerfinPlus:IsRaidAssignmentSectionVisibleInUI(section)
+  return not IsIndividualMeleeOrRangedPositionSection(section)
+end
+
 function MerfinPlus:GetRaidAssignmentDetailSections(boss)
   if not boss then return {} end
   local cached = RAID_ASSIGNMENT_DETAIL_SECTIONS_CACHE[boss]
@@ -2219,7 +2278,11 @@ function MerfinPlus:GetRaidAssignmentDetailSections(boss)
     -- (for example, "Priest").  Only those Class Assignments are condensed.
     -- Position, marker, and every other non-Buff section retain their original
     -- category cards and rows. Buff is the one nested grouping requested below.
-    if sourceSection.kind == "buff" or NormalizeName(sourceSection.name) == "buff" or NormalizeName(sourceSection.name) == "buffassignments" then
+    if not self:IsRaidAssignmentSectionVisibleInUI(sourceSection) then
+      -- Keep the imported section on the boss and in the sync payload so the
+      -- Boss Plan renderer can still position every player. Only the regular
+      -- Assignment detail UI omits these redundant individual position lists.
+    elseif sourceSection.kind == "buff" or NormalizeName(sourceSection.name) == "buff" or NormalizeName(sourceSection.name) == "buffassignments" then
       if not buffSection then
         buffSection = {
           name = "Buff Assignments",
@@ -2311,19 +2374,20 @@ function MerfinPlus:BuildRaidAssignmentPlayerMap(boss)
   return players
 end
 
-function MerfinPlus:GetRaidAssignmentSectionDisplay(sectionName, sectionKind)
+function MerfinPlus:GetRaidAssignmentSectionDisplay(sectionName, sectionKind, sectionRole)
   local marker, markerLabel = GetSectionMarker(sectionName)
   if marker then
     return self:LocalizeAssignmentSection(markerLabel), marker, true
   end
   local displayLabel = self:LocalizeAssignmentSection(sectionName)
   local key = NormalizeName(sectionName)
-  if sectionKind == "position" then
-    return displayLabel, ROLE_ICONS.position, false
-  elseif key:find("tank", 1, true) then
+  local roleKey = NormalizeName(sectionRole)
+  if roleKey == "tank" or key:find("tank", 1, true) then
     return displayLabel, ROLE_ICONS.tank, false
-  elseif key:find("heal", 1, true) then
+  elseif roleKey == "heal" or roleKey == "healer" or key:find("heal", 1, true) then
     return displayLabel, ROLE_ICONS.heal, false
+  elseif sectionKind == "position" then
+    return displayLabel, ROLE_ICONS.position, false
   elseif key:find("position", 1, true) then
     return displayLabel, ROLE_ICONS.position, false
   end

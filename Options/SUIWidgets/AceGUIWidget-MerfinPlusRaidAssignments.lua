@@ -14,7 +14,7 @@ local DROPDOWN_ARROW_TEXTURE = "Interface\\AddOns\\MerfinPlus\\Media\\options\\d
 local DEFAULT_FONT_HEIGHT = 14
 local SECTION_ROW_HEIGHT = 32
 local TASK_ROW_HEIGHT = 42
-local MULTI_TARGET_TASK_ROW_HEIGHT = 62
+local MULTI_TARGET_TASK_ROW_HEIGHT = 52
 local ROW_GAP = 6
 local POSITION_COLUMN_GAP = 8
 local POSITION_COLUMN_TANK_RATIO = 0.42
@@ -65,6 +65,26 @@ local CLASS_TOKENS = {
 
 local function GetClassToken(className)
   return CLASS_TOKENS[NormalizeKey(className)]
+end
+
+local ASSIGNMENT_POSITION_ROLES = {
+  tank = true,
+  heal = true,
+  melee = true,
+  ranged = true,
+}
+
+local function GetSectionAssignmentRole(section)
+  local sectionRole
+  for _, rowData in ipairs(section and section.rows or {}) do
+    local task = rowData.task or rowData
+    local role = NormalizeKey(task and task.role)
+    if ASSIGNMENT_POSITION_ROLES[role] then
+      if sectionRole and sectionRole ~= role then return nil end
+      sectionRole = role
+    end
+  end
+  return sectionRole
 end
 
 local function GetClassIcon(classToken)
@@ -485,9 +505,9 @@ local function GetTaskRowGeometry(row)
   -- Reserve enough room for three player icons plus a complete character name
   -- before placing the assignment. The old percentage-only split left fewer
   -- than 65 pixels for names inside the default two-column Tank/Heal layout.
-  local assignmentLeft = math.max(184, math.floor(rowWidth * 0.32))
+  local assignmentLeft = math.max(170, math.floor(rowWidth * 0.27))
   assignmentLeft = math.min(math.max(140, rowWidth - 136), assignmentLeft)
-  local targetLeft = math.max(assignmentLeft + 118, math.floor(rowWidth * 0.70))
+  local targetLeft = math.max(assignmentLeft + 106, math.floor(rowWidth * 0.58))
   targetLeft = math.min(math.max(assignmentLeft + 72, rowWidth - 42), targetLeft)
   return rowWidth, assignmentLeft, targetLeft
 end
@@ -568,11 +588,23 @@ local function ApplyTaskAssignmentIconGeometry(row, hasSpellIcon, hasSecondarySp
 end
 
 local function ApplyMultiTargetTaskRowGeometry(row)
+  -- Multi-target assignments use a second text line. Preserve every existing
+  -- horizontal anchor and only lift points that are attached directly to the
+  -- row. Replacing the first point used to discard RIGHT anchors and also
+  -- compounded the offset across class/spec/name and spell/detail chains.
   for _, region in ipairs({ row.classIcon, row.specIcon, row.roleIcon, row.name, row.spellIcon, row.secondarySpellIcon, row.assignmentMarkerIcon, row.detail }) do
-    local point, relativeTo, relativePoint, x, _ = region:GetPoint(1)
-    if point then
+    local points = {}
+    for pointIndex = 1, region:GetNumPoints() do
+      local point, relativeTo, relativePoint, x, y = region:GetPoint(pointIndex)
+      points[#points + 1] = { point, relativeTo, relativePoint, x, y }
+    end
+    if #points > 0 then
       region:ClearAllPoints()
-      region:SetPoint(point, relativeTo, relativePoint, x, 11)
+      for _, anchor in ipairs(points) do
+        local point, relativeTo, relativePoint, x, y = unpack(anchor)
+        if relativeTo == row then y = (y or 0) + 11 end
+        region:SetPoint(point, relativeTo, relativePoint, x, y)
+      end
     end
   end
   row.targetIcon:Hide()
@@ -708,7 +740,11 @@ local function ConfigureSectionRow(self, row, entry, boss, section, collapseKey,
   collapseKey = collapseKey or section.name
   indent = indent or 0
   local collapsed = MerfinPlus:IsRaidAssignmentSectionCollapsed(entry, boss, collapseKey)
-  local label, icon = MerfinPlus:GetRaidAssignmentSectionDisplay(section.displayName or section.name, section.kind)
+  local label, icon = MerfinPlus:GetRaidAssignmentSectionDisplay(
+    section.displayName or section.name,
+    section.kind,
+    GetSectionAssignmentRole(section)
+  )
   -- Section chrome owns these class/special icons. Keep them out of the shared
   -- display so Soulstone, Curse, and other task spell icons remain authoritative.
   icon = icon or GetClassAssignmentSectionIcon(section) or GetSpecialAssignmentSectionIcon(section)
@@ -748,7 +784,7 @@ local function ConfigureTaskRow(row, task, playerMap, sectionName, sectionKind)
   local assignmentMarkerIcon = display.assignmentMarkerIcon
   local targetLabel, targetClassToken, targetIcon = display.target, display.targetClass, display.targetIcon
   local targetIsMarker, targetSpec = display.targetIsMarker, display.targetSpec
-  local _, sectionIcon = MerfinPlus:GetRaidAssignmentSectionDisplay(sectionName, sectionKind)
+  local _, sectionIcon = MerfinPlus:GetRaidAssignmentSectionDisplay(sectionName, sectionKind, task and task.role)
   if not display.isAdditional then spellIcon = sectionIcon or spellIcon end
   if assignmentMarkerIcon == sectionIcon then assignmentMarkerIcon = nil end
   if targetIsMarker and targetIcon == spellIcon then
@@ -813,11 +849,20 @@ local function ConfigureTaskRow(row, task, playerMap, sectionName, sectionKind)
     hasTargetSpecIcon,
     hasTargetText
   )
-  if display.multiTarget then ApplyMultiTargetTaskRowGeometry(row) end
+  local stackedMultiTarget = false
+  if display.multiTarget then
+    local rowWidth, _, targetLeft = GetTaskRowGeometry(row)
+    local targetWidth = math.max(1, rowWidth - targetLeft - 8)
+    local targetTextWidth = row.target.GetStringWidth and row.target:GetStringWidth() or (targetWidth + 1)
+    if targetTextWidth > targetWidth then
+      ApplyMultiTargetTaskRowGeometry(row)
+      stackedMultiTarget = true
+    end
+  end
   if hasTargetText then
     row.target:Show()
   end
-  return display.multiTarget and MULTI_TARGET_TASK_ROW_HEIGHT or TASK_ROW_HEIGHT
+  return stackedMultiTarget and MULTI_TARGET_TASK_ROW_HEIGHT or TASK_ROW_HEIGHT
 end
 
 local function GetDetailContentWidth(self)
@@ -1064,6 +1109,7 @@ local function RefreshBossList(self, navigation)
         and MerfinPlus:T("Open the complete imported MFPRA Boss Plan for the selected boss.")
         or MerfinPlus:T("No imported MFPRA Boss Plan is available for the selected raid and boss.")
       SetButtonEnabled(self.showBossPlanButton, not self.disabled and self.showBossPlanButton.hasPlan)
+      if self.detailScroll then self.detailScroll:SetVerticalScroll(0) end
       RefreshDetail(self, self.navigation)
     end)
     button:Show()
@@ -1653,6 +1699,7 @@ local function PopulateRaidSelector(self, onSelected)
       state.statusTone = "muted"
       CloseRaidMenu(self)
       if onSelected then onSelected(self, row.groupID) end
+      if self.detailScroll then self.detailScroll:SetVerticalScroll(0) end
       MerfinPlus:NotifyRaidAssignmentsChanged()
     end)
     self.raidOptions[index] = option
@@ -1996,6 +2043,7 @@ local function AcquireBossMenuOption(self, index)
       state.statusTone = "red"
       return
     end
+    if self.detailScroll then self.detailScroll:SetVerticalScroll(0) end
     self:Refresh()
   end)
   self.bossOptions[index] = option
@@ -2036,7 +2084,11 @@ end
 
 local function ConfigureStaticSectionRow(row, section, indent, isBuffClassSection)
   ResetDetailRow(row)
-  local label, icon = MerfinPlus:GetRaidAssignmentSectionDisplay(section.displayName or section.name, section.kind)
+  local label, icon = MerfinPlus:GetRaidAssignmentSectionDisplay(
+    section.displayName or section.name,
+    section.kind,
+    GetSectionAssignmentRole(section)
+  )
   icon = icon or GetClassAssignmentSectionIcon(section) or GetSpecialAssignmentSectionIcon(section)
   local icons = icon and { icon } or GetBuffAssignmentSectionIcons(section, isBuffClassSection)
   SetBackdrop(row, colors.heading, colors.borderSoft)
@@ -2049,12 +2101,20 @@ end
 
 local function IsTankPositionSection(section)
   local key = NormalizeKey(section and (section.displayName or section.name))
-  return key:find("tank", 1, true) and key:find("position", 1, true)
+  return (section and section.kind == "position" and GetSectionAssignmentRole(section) == "tank")
+    or (key:find("tank", 1, true) and key:find("position", 1, true))
 end
 
 local function IsHealPositionSection(section)
   local key = NormalizeKey(section and (section.displayName or section.name))
-  return (key:find("heal", 1, true) or key:find("healer", 1, true)) and key:find("position", 1, true)
+  return (section and section.kind == "position" and GetSectionAssignmentRole(section) == "heal")
+    or ((key:find("heal", 1, true) or key:find("healer", 1, true)) and key:find("position", 1, true))
+end
+
+local function PositionSectionsSharePhase(left, right)
+  local leftPhase = NormalizeKey(left and left.context and left.context.phase)
+  local rightPhase = NormalizeKey(right and right.context and right.context.phase)
+  return leftPhase == "" or rightPhase == "" or leftPhase == rightPhase
 end
 
 local function RefreshFlatAssignmentDetail(self, navigation)
@@ -2139,7 +2199,7 @@ local function RefreshFlatAssignmentDetail(self, navigation)
         local rowHeight = ConfigureTaskRow(row, task, playerMap, rowData.sectionName or nestedSection.name, nestedSection.kind)
         if row.SetBackdrop then row:SetBackdrop(nil) end
         ConfigureSelfAssignmentHighlight(row, task)
-        rowHeight = rowHeight == MULTI_TARGET_TASK_ROW_HEIGHT and 52 or 36
+        rowHeight = rowHeight == MULTI_TARGET_TASK_ROW_HEIGHT and MULTI_TARGET_TASK_ROW_HEIGHT or 36
         AnchorRow(row, x, width, y, rowHeight)
         y = y + rowHeight + 2
       end
@@ -2157,6 +2217,7 @@ local function RefreshFlatAssignmentDetail(self, navigation)
           if not consumed[candidateIndex] and #(candidate.rows or {}) > 0
             and ((IsTankPositionSection(section) and IsHealPositionSection(candidate))
               or (IsHealPositionSection(section) and IsTankPositionSection(candidate)))
+            and PositionSectionsSharePhase(section, candidate)
           then
             pairIndex = candidateIndex
             break

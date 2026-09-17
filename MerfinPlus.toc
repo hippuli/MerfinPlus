@@ -1,7 +1,7 @@
 ## Interface: 20506
 ## Title: MerfinPlus
 ## Author: Merfin
-## Version: 2.96
+## Version: 2.99
 ## X-Website: discord.gg/merfin
 ## X-Flavor: TBC
 ## Notes: Inserts Merfin media into LibSharedMedia's storage.

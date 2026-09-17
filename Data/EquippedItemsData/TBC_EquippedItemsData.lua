@@ -1706,6 +1706,7 @@ local trinketData = {
     effects = {
       {
         type = "proc",
+        noCooldown = true,
         spells = {
           40477,
         },
@@ -2869,6 +2870,23 @@ local trinketData = {
           37174,
         },
         icd = 30,
+      },
+    },
+  },
+  {
+    name = "Warglaives of Azzinoth",
+    items = {
+      32837,
+      32838,
+    },
+    effects = {
+      {
+        type = "proc",
+        spells = {
+          41435,
+        },
+        icd = 45,
+        cooldownStartsOnProc = true,
       },
     },
   },

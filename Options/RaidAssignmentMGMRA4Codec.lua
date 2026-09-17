@@ -23,9 +23,14 @@ local LIMITS = {
 }
 
 local ELEMENT_TYPES = {
-  player = true, text = true, emoji = true, arrow = true, ["arrow-down"] = true,
+  player = true, ["position-slot"] = true, text = true, emoji = true, arrow = true, ["arrow-down"] = true,
   line = true, box = true, circle = true, triangle = true, cone = true,
   ["raid-marker"] = true, boss = true, image = true, drawing = true,
+}
+
+local CANVAS_GEOMETRY_TYPES = {
+  line = true, arrow = true, ["arrow-down"] = true,
+  box = true, circle = true, triangle = true, cone = true,
 }
 
 local TOP_LEVEL_FIELDS = { schema = true, version = true, catalogVersion = true, expansion = true, raidGroup = true, comp = true, legacyAssignments = true, plans = true }
@@ -34,13 +39,16 @@ local PLAN_FIELDS = { raid = true, boss = true, phase = true, name = true, backg
 local PLAYER_FIELDS = { name = true, class = true, spec = true }
 local ELEMENT_FIELDS = {}
 for _, field in ipairs({
-  "type", "x", "y", "player", "label", "rotation", "bossFacingVisible", "bossFacingArrowVisible",
+  "type", "x", "y", "player", "playerIconRole", "playerNameVisible", "label", "rotation",
+  "shapeGeometry", "coneRadius", "coneAngle", "lineStart", "lineEnd", "lineOpacity",
+  "lineOutline", "lineOutlineColor", "lineOutlineWidth", "bossFacingVisible", "bossFacingArrowVisible",
   "bossFacingColor", "bossFacingRingWidth", "color", "marker",
-  "assetId", "role", "wowClass", "wowIcon", "spellId", "size", "arrowLength", "width", "height",
+  "assetId", "role", "wowClass", "wowSpec", "wowIcon", "spellId", "size", "arrowLength", "width", "height",
   "fill", "fillColor", "fillOpacity", "strokeColor", "strokeWidth", "textColor", "textFont",
   "textAlign", "textVerticalAlign", "textSizing", "textBackdrop", "textBold", "textItalic",
   "textUnderline", "textStrikethrough", "textSize", "textStroke", "textStrokeColor", "textStrokeWidth",
-  "positionRole", "rolePosition", "rolePositionVisible", "specialAssignmentKey", "drawingMode", "drawingPoints", "drawingWidth",
+  "positionRole", "rolePosition", "mapPosition", "positionSlotId", "positionAssignMode", "positionClass",
+  "positionLabelPosition", "positionLabelGap", "rolePositionVisible", "specialAssignmentKey", "drawingMode", "drawingPoints", "drawingWidth",
   "drawingHeight", "drawingFadeOut", "centerDot", "polygonSides", "pinnedTo", "facing", "locked",
 }) do ELEMENT_FIELDS[field] = true end
 local RAID_MARKERS = { star = true, circle = true, diamond = true, triangle = true, moon = true, square = true, cross = true, skull = true }
@@ -338,6 +346,20 @@ local function ValidateElement(element, planIndex, elementIndex, elementCount, t
     ok, errorText = ValidateBoundedNumber(element[field], label .. "." .. field, 0.1, 200, false)
     if not ok then return nil, errorText end
   end
+  if element.shapeGeometry ~= nil then
+    if element.shapeGeometry ~= "canvas" then return nil, label .. ".shapeGeometry is unsupported." end
+    if not CANVAS_GEOMETRY_TYPES[element.type] then return nil, label .. ".shapeGeometry requires a shape." end
+  end
+  ok, errorText = ValidateBoundedNumber(element.coneRadius, label .. ".coneRadius", 0.01, 200, false)
+  if not ok then return nil, errorText end
+  ok, errorText = ValidateBoundedNumber(element.coneAngle, label .. ".coneAngle", 1, 359, false)
+  if not ok then return nil, errorText end
+  ok, errorText = ValidateBoundedNumber(element.lineOpacity, label .. ".lineOpacity", 0, 100, false)
+  if not ok then return nil, errorText end
+  ok, errorText = ValidateBoundedNumber(element.lineOutlineWidth, label .. ".lineOutlineWidth", 0, 200, false)
+  if not ok then return nil, errorText end
+  ok, errorText = ValidateBoundedNumber(element.positionLabelGap, label .. ".positionLabelGap", -20, 40, false)
+  if not ok then return nil, errorText end
   ok, errorText = ValidateBoundedNumber(element.fillOpacity, label .. ".fillOpacity", 0, 100, false)
   if not ok then return nil, errorText end
   ok, errorText = ValidateFiniteNumber(element.rotation, label .. ".rotation")
@@ -351,6 +373,9 @@ local function ValidateElement(element, planIndex, elementIndex, elementCount, t
   if element.rolePosition ~= nil and (not IsFiniteNumber(element.rolePosition) or element.rolePosition % 1 ~= 0 or element.rolePosition < 0 or element.rolePosition > 512) then
     return nil, label .. ".rolePosition must be an integer from 0 to 512."
   end
+  if element.mapPosition ~= nil and (not IsFiniteNumber(element.mapPosition) or element.mapPosition % 1 ~= 0 or element.mapPosition < 0 or element.mapPosition > 512) then
+    return nil, label .. ".mapPosition must be an integer from 0 to 512."
+  end
   if element.polygonSides ~= nil and (not IsFiniteNumber(element.polygonSides) or element.polygonSides % 1 ~= 0 or element.polygonSides < 3 or element.polygonSides > 64) then
     return nil, label .. ".polygonSides must be an integer from 3 to 64."
   end
@@ -358,11 +383,11 @@ local function ValidateElement(element, planIndex, elementIndex, elementCount, t
     return nil, label .. ".spellId must be a positive integer."
   end
 
-  for _, field in ipairs({ "bossFacingColor", "color", "fillColor", "strokeColor", "textColor", "textStrokeColor" }) do
+  for _, field in ipairs({ "bossFacingColor", "color", "fillColor", "strokeColor", "lineOutlineColor", "textColor", "textStrokeColor" }) do
     ok, errorText = ValidateColor(element[field], label .. "." .. field)
     if not ok then return nil, errorText end
   end
-  for _, field in ipairs({ "label", "assetId", "role", "wowClass", "wowIcon", "marker", "textFont", "positionRole", "specialAssignmentKey" }) do
+  for _, field in ipairs({ "label", "assetId", "role", "wowClass", "wowSpec", "wowIcon", "marker", "textFont", "positionRole", "positionSlotId", "positionClass", "specialAssignmentKey" }) do
     ok, errorText = ValidateText(element[field], label .. "." .. field, LIMITS.textBytes, false)
     if not ok then return nil, errorText end
   end
@@ -383,7 +408,7 @@ local function ValidateElement(element, planIndex, elementIndex, elementCount, t
   ok, errorText = ValidatePlayer(element.player, label .. ".player", element.type == "player")
   if not ok then return nil, errorText end
   for _, field in ipairs({
-    "bossFacingVisible", "bossFacingArrowVisible", "fill", "textBackdrop", "textBold", "textItalic", "textUnderline",
+    "playerNameVisible", "lineOutline", "bossFacingVisible", "bossFacingArrowVisible", "fill", "textBackdrop", "textBold", "textItalic", "textUnderline",
     "textStrikethrough", "textStroke", "rolePositionVisible", "drawingFadeOut", "centerDot", "locked",
   }) do
     ok, errorText = ValidateBoolean(element[field], label .. "." .. field)
@@ -404,7 +429,17 @@ local function ValidateElement(element, planIndex, elementIndex, elementCount, t
   if not ok then return nil, errorText end
   ok, errorText = ValidateEnum(element.role, label .. ".role", RAID_ROLES)
   if not ok then return nil, errorText end
+  ok, errorText = ValidateEnum(element.playerIconRole, label .. ".playerIconRole", RAID_ROLES)
+  if not ok then return nil, errorText end
   ok, errorText = ValidateEnum(element.positionRole, label .. ".positionRole", RAID_ROLES)
+  if not ok then return nil, errorText end
+  ok, errorText = ValidateEnum(element.lineStart, label .. ".lineStart", { none = true, arrow = true, solid = true, circle = true, bar = true })
+  if not ok then return nil, errorText end
+  ok, errorText = ValidateEnum(element.lineEnd, label .. ".lineEnd", { none = true, arrow = true, solid = true, circle = true, bar = true })
+  if not ok then return nil, errorText end
+  ok, errorText = ValidateEnum(element.positionAssignMode, label .. ".positionAssignMode", { any = true, role = true, class = true })
+  if not ok then return nil, errorText end
+  ok, errorText = ValidateEnum(element.positionLabelPosition, label .. ".positionLabelPosition", { top = true, right = true, bottom = true, left = true })
   if not ok then return nil, errorText end
   ok, errorText = ValidateEnum(element.textFont, label .. ".textFont", TEXT_FONTS)
   if not ok then return nil, errorText end
@@ -422,6 +457,9 @@ local function ValidateElement(element, planIndex, elementIndex, elementCount, t
       if element[field] ~= nil then sources = sources + 1 end
     end
     if sources ~= 1 then return nil, label .. " must contain exactly one image source token." end
+    if element.wowSpec ~= nil and element.wowClass == nil then
+      return nil, label .. ".wowSpec requires wowClass."
+    end
   end
 
   for _, field in ipairs({ "pinnedTo", "facing" }) do
