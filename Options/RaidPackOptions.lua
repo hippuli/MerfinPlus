@@ -270,11 +270,11 @@ function MerfinPlus:BuildRaidPackOptions()
   end
 
   local showTBCWaSettings = function()
-    return not MerfinPlus:IsMoP()
+    return not Merfin.IsMists()
       or MerfinPlus.db.profile.enableTBCWaSettingsOnMoP
   end
 
-  if MerfinPlus:IsMoP() then
+  if Merfin.IsMists() then
     raidPack.args.mopTBCWaSettings = {
       type = "group",
       name = "MoP Aura Testing",

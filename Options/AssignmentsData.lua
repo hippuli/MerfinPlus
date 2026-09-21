@@ -475,7 +475,7 @@ local function GetCurrentExpansionKey()
       return expansion
     end
   end
-  return MerfinPlus.IsTBC() and "tbc" or ""
+  return Merfin.IsTBC() and "tbc" or ""
 end
 
 local function GetSpellIconTexture(spellID)

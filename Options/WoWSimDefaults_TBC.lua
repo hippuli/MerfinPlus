@@ -3842,7 +3842,7 @@ local function AutoAssignTBCWoWSimProfileIfMissing()
 end
 
 function MerfinPlus:RegisterTBCWoWSimAutoAssign()
-  if self.tbcWoWSimAutoAssignRegistered or not MerfinPlus.IsTBC() then
+  if self.tbcWoWSimAutoAssignRegistered or not Merfin.IsTBC() then
     return
   end
 
@@ -3859,7 +3859,7 @@ function MerfinPlus:RegisterTBCWoWSimAutoAssign()
 end
 
 function MerfinPlus:ModernizeTBCWoWSimDefaults()
-  if not MerfinPlus.IsTBC() then
+  if not Merfin.IsTBC() then
     return
   end
 

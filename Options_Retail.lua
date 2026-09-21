@@ -133,42 +133,20 @@ local function DeserializeJSON(source)
   return nil, "EncodingUtil"
 end
 
-local isTitan = WOW_PROJECT_ID == WOW_PROJECT_WRATH_CLASSIC
 
 MerfinPlus.GetDefaultFont = function(type)
-  return (Locale == "zhTW" or Locale == "zhCN" or isTitan) and "CN Merged (SF-Yahee)"
+  return (Locale == "zhTW" or Locale == "zhCN" or Merfin.IsTitan()) and "CN Merged (SF-Yahee)"
     or (type == "bold" and "SFUIDisplayCondensed-Bold" or "SFUIDisplayCondensed-Semibold")
 end
 
 MerfinPlus.GetDefaultRaidFont = function(type)
-  return (Locale == "zhTW" or Locale == "zhCN" or isTitan) and "CN Merged (SF-Yahee)"
+  return (Locale == "zhTW" or Locale == "zhCN" or Merfin.IsTitan()) and "CN Merged (SF-Yahee)"
     or (type == "bold" and "PT Sans Narrow Bold" or "PT Sans Narrow")
 end
 
 Merfin.GetDefaultFont = MerfinPlus.GetDefaultFont
 Merfin.GetDefaultRaidFont = MerfinPlus.GetDefaultRaidFont
 
-local function IsWrath()
-  local build = MerfinPlus.BuildInfo or select(4, GetBuildInfo())
-  return build > 33000 and build < 40000
-end
-
-local function IsMoP()
-  local build = MerfinPlus.BuildInfo or select(4, GetBuildInfo())
-  return build > 50000 and build < 60000
-end
-
-local function IsCata()
-  local build = MerfinPlus.BuildInfo or select(4, GetBuildInfo())
-  return build > 40000 and build < 50000
-end
-
-local function IsTBC()
-  local build = MerfinPlus.BuildInfo or select(4, GetBuildInfo())
-  return build > 20504 and build < 30000
-end
-
-Merfin.IsTBC = IsTBC
 
 -- Friendly-marker mechanics are part of the same MerfinPlus Auto-Marker
 -- profile, but are kept separate from enemy NPC settings.
@@ -361,7 +339,7 @@ function MerfinPlus:NormalizeRaidPackLocaleSettings()
 end
 
 do
-  if IsTBC() then
+  if Merfin.IsTBC() then
     function MerfinPlus:InitializeWoWSimDefaults()
       if not MerfinPlus.db or not MerfinPlus.db.global then
         return
@@ -3481,11 +3459,11 @@ local CATA_WOWSIM_SPEC_BY_CLASS_ID = {
 }
 
 local function GetEffectiveSpecID()
-  if IsWrath() or IsTBC() then
+  if Merfin.IsWrath() or Merfin.IsTBC() then
     return select(2, Merfin.GetPlayerRole())
-  elseif IsMoP() then
+  elseif Merfin.IsMists() then
     return GetSpecializationInfoForClassID(select(3, UnitClass("player")), C_SpecializationInfo.GetSpecialization())
-  elseif IsCata() then
+  elseif Merfin.IsCata() then
     local classID = select(3, UnitClass("player"))
     local treeIndex = GetPrimaryTalentTree()
     local specs = classID and CATA_WOWSIM_SPEC_BY_CLASS_ID[classID]
@@ -5060,7 +5038,7 @@ function MerfinPlus:SetupOptions()
     [14] = 14, -- Trinket 2
     [15] = 16, -- Mainhand
     [16] = 17, -- Offhand
-    [17] = (IsWrath() or IsTBC() and 18) or nil, -- Relic/Ranged
+    [17] = (Merfin.IsWrath() or Merfin.IsTBC() and 18) or nil, -- Relic/Ranged
   }
 
   local SLOT_NAMES = {
@@ -5080,7 +5058,7 @@ function MerfinPlus:SetupOptions()
     [15] = _G.INVTYPE_CLOAK,
     [16] = _G.INVTYPE_WEAPONMAINHAND,
     [17] = _G.INVTYPE_WEAPONOFFHAND,
-    [18] = (IsWrath() or IsTBC()) and _G.INVTYPE_RELIC or nil,
+    [18] = (Merfin.IsWrath() or Merfin.IsTBC()) and _G.INVTYPE_RELIC or nil,
   }
 
   -- -------------------------
@@ -5188,7 +5166,7 @@ function MerfinPlus:SetupOptions()
     [7] = "SHAMAN",
     [8] = "MAGE",
     [9] = "WARLOCK",
-    [10] = IsMoP() and "MONK" or nil,
+    [10] = Merfin.IsMists() and "MONK" or nil,
     [11] = "DRUID",
   }
 
@@ -5241,7 +5219,7 @@ function MerfinPlus:SetupOptions()
     return CLASS_SPEC_IDS
   end
 
-  local CLASS_SPEC_IDS = IsWrath()
+  local CLASS_SPEC_IDS = Merfin.IsWrath()
       and {
 
         DRUID = {
@@ -5304,7 +5282,7 @@ function MerfinPlus:SetupOptions()
           { specID = 252, specKey = "DeathKnightUnholy", icon = 135775 },
         },
       }
-    or IsTBC()
+    or Merfin.IsTBC()
       and {
         DRUID = {
           { specID = 283, specKey = "DruidBalance", icon = 136096 }, -- Balance
@@ -5360,10 +5338,10 @@ function MerfinPlus:SetupOptions()
           { specID = 301, specKey = "WarlockDestruction", icon = 136186 },
         },
       }
-    or IsCata() and (function()
+    or Merfin.IsCata() and (function()
       return BuildClassSpecIDsFromClient(cataSpecsByClassID, true)
     end)()
-    or IsMoP() and (function()
+    or Merfin.IsMists() and (function()
       return BuildClassSpecIDsFromClient(mopSpecsByClassID)
     end)()
     or {}
@@ -5750,14 +5728,14 @@ function MerfinPlus:SetupOptions()
         order = o + 0.1,
         width = "full",
 
-        hidden = (IsMoP() or IsCata()) and function()
+        hidden = (Merfin.IsMists() or Merfin.IsCata()) and function()
           local p = selectedProfileKey and db.global.wowSims.profiles[selectedProfileKey]
           return not p or not p.itemSuffixes or p.itemSuffixes[slotID] == nil
         end or true,
 
         values = function()
           local vals = {}
-          if IsCata() then
+          if Merfin.IsCata() then
             for id, name in pairs(CATA_SUFFIX_NAME_BY_ID) do
               vals[id] = name
             end
@@ -5785,7 +5763,7 @@ function MerfinPlus:SetupOptions()
         name = "+ Suffix",
         order = o + 0.05,
         width = 0.8,
-        hidden = (IsMoP() or IsCata()) and function()
+        hidden = (Merfin.IsMists() or Merfin.IsCata()) and function()
           local p = selectedProfileKey and db.global.wowSims.profiles[selectedProfileKey]
           return not p or not p.items or not p.items[slotID] or (p.itemSuffixes and p.itemSuffixes[slotID])
         end or true,
@@ -5793,7 +5771,7 @@ function MerfinPlus:SetupOptions()
           local p = db.global.wowSims.profiles[selectedProfileKey]
           p.itemSuffixes = p.itemSuffixes or {}
 
-          p.itemSuffixes[slotID] = IsCata() and -129 or -336
+          p.itemSuffixes[slotID] = Merfin.IsCata() and -129 or -336
 
           NotifySimChanged()
           AceConfigRegistry:NotifyChange("MerfinPlus_WoWSim")
@@ -5805,7 +5783,7 @@ function MerfinPlus:SetupOptions()
         desc = "|cffff4040" .. L["Delete this item entry."] .. "|r",
         order = o + 0.15,
         width = 0.3,
-        hidden = (IsMoP() or IsCata()) and function()
+        hidden = (Merfin.IsMists() or Merfin.IsCata()) and function()
           local p = selectedProfileKey and db.global.wowSims.profiles[selectedProfileKey]
           return not p or not p.itemSuffixes or p.itemSuffixes[slotID] == nil
         end or true,
@@ -5910,7 +5888,7 @@ function MerfinPlus:SetupOptions()
     name = "WoW Sim",
     childGroups = "tab",
     hidden = function()
-      return not IsWrath() and not IsTBC() and not IsCata() and not IsMoP()
+      return not Merfin.IsWrath() and not Merfin.IsTBC() and not Merfin.IsCata() and not Merfin.IsMists()
     end,
     args = {
 
@@ -6203,7 +6181,7 @@ function MerfinPlus:SetupOptions()
   AceConfigRegistry:RegisterOptionsTable("MerfinPlus", mainOptions)
   self.optionsFrame = AceConfigDialog:AddToBlizOptions("MerfinPlus", "MerfinPlus v" .. version)
 
-  if IsTBC() or version == '2.99' then
+  if Merfin.IsTBC() or version == '3.02' then
     AceConfigRegistry:RegisterOptionsTable("MerfinPlus_RaidPack", raidPack)
     AceConfigDialog:AddToBlizOptions("MerfinPlus_RaidPack", "Raid WA Options", "MerfinPlus v" .. version)
   end
@@ -6211,7 +6189,7 @@ function MerfinPlus:SetupOptions()
   AceConfigRegistry:RegisterOptionsTable("MerfinPlus_Media", mediaOptions)
   AceConfigDialog:AddToBlizOptions("MerfinPlus_Media", "Media", "MerfinPlus v" .. version)
 
-  if IsWrath() or IsTBC() or IsCata() or IsMoP() then
+  if Merfin.IsWrath() or Merfin.IsTBC() or Merfin.IsCata() or Merfin.IsMists() then
     AceConfigRegistry:RegisterOptionsTable("MerfinPlus_WoWSim", wowSimOptions)
     AceConfigDialog:AddToBlizOptions("MerfinPlus_WoWSim", "WoW Sim", "MerfinPlus v" .. version)
   end
@@ -6239,7 +6217,7 @@ function MerfinPlus:SetupOptions()
       end)(),
     },
   }
-  if IsTBC() or version == '2.99' then
+  if Merfin.IsTBC() or version == '3.02' then
     standaloneOptions.args.raidPack = (function()
       raidPack.order = 10
       raidPack.name = "Raid WA Options"
@@ -6247,7 +6225,7 @@ function MerfinPlus:SetupOptions()
     end)()
   end
 
-  if IsWrath() or IsTBC() or IsCata() or IsMoP() then
+  if Merfin.IsWrath() or Merfin.IsTBC() or Merfin.IsCata() or Merfin.IsMists() then
     standaloneOptions.args.wowSim = (function()
       wowSimOptions.order = 30
       wowSimOptions.name = "WoW Sim"

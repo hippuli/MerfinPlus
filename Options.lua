@@ -1,10 +1,11 @@
 local MerfinPlus = LibStub("AceAddon-3.0"):GetAddon("MerfinPlus")
 
-local aceDbOptions = LibStub("AceDBOptions-3.0")
-local aceConfigDialog = LibStub("AceConfigDialog-3.0")
-local aceConfigRegistry = LibStub("AceConfigRegistry-3.0")
-local aceConsole = LibStub("AceConsole-3.0")
-local aceGui = LibStub("AceGUI-3.0")
+local libraries = MerfinPlus.Libs
+local aceDbOptions = libraries.AceDBOptions
+local aceConfigDialog = libraries.AceConfigDialog
+local aceConfigRegistry = libraries.AceConfigRegistry
+local aceConsole = libraries.AceConsole
+local aceGui = libraries.AceGUI
 local locale = MerfinPlus.L
 
 local GetAddOnMetadata = C_AddOns and C_AddOns.GetAddOnMetadata or GetAddOnMetadata
@@ -27,6 +28,7 @@ local navItemHeight = 48          -- Height of one main navigation entry.
 local navFooterHeight = 126       -- Minimap toggle, theme selector and language selector.
 
 local standaloneBackdropPath = "Interface\\AddOns\\MerfinPlus\\Media\\options\\merfinplus_backdrop.png"
+local standaloneLogoPath = "Interface\\AddOns\\MerfinPlus\\Media\\options\\merfin_watermark.png"
 local standaloneBackdropAspect = 16 / 9
 local classHeaderAspect = 16
 local languageFlagPaths = {
@@ -233,7 +235,7 @@ local function CreateStandaloneFrameLayout(frame)
     "OUTLINE|SLUG"
   )
   versionText:SetPoint("LEFT", titleText, "RIGHT", 10, 0)
-  versionText:SetText("v" .. (GetAddOnMetadata("MerfinPlus", "Version") or "???"))
+  versionText:SetText(GetAddOnMetadata("MerfinPlus", "Version") or "???")
   versionText:SetTextColor(theme.muted[1], theme.muted[2], theme.muted[3], 1)
   frame.VersionText = versionText
 
@@ -314,7 +316,7 @@ local function CreateLogoBadge(frame)
   badge:SetScript("OnMouseUp", frame.StopHeaderMove)
 
   local logo = badge:CreateTexture(nil, "OVERLAY", nil, 7)
-  logo:SetTexture("Interface\\AddOns\\MerfinPlus\\Media\\options\\merfin_watermark.png")
+  logo:SetTexture(standaloneLogoPath)
   logo:SetVertexColor(1, 1, 1, 1)
   logo:SetAlpha(1)
   logo:SetTexCoord(0, 1, 0, 1)
@@ -800,10 +802,44 @@ local function CreateLogoAnimations(frame, texture, glow)
   end)
 end
 
+local function ScaleStandaloneFrame(frame)
+  local E = _G.ElvUI and _G.ElvUI[1]
+  if E and E.uiscale then
+    frame:SetScale(1)
+    return
+  end
+
+  local _, screenHeight = GetPhysicalScreenSize()
+  if not screenHeight or screenHeight <= 0 then return end
+  -- Match ElvUI's automatic UI scale without changing the rest of the game UI.
+  frame:SetScale(math.max(0.4, math.min(1.15, 768 / screenHeight)) / UIParent:GetEffectiveScale())
+end
+
 local function CreateStandaloneFrame()
   -- ROOT WINDOW
   local frame = CreateFrame("Frame", "MerfinPlusOptionsFrame", UIParent, BackdropTemplate)
   frame:SetSize(defaultFrameWidth, defaultFrameHeight)
+  ScaleStandaloneFrame(frame)
+  frame:HookScript("OnShow", ScaleStandaloneFrame)
+  frame:RegisterEvent("UI_SCALE_CHANGED")
+  frame:RegisterEvent("DISPLAY_SIZE_CHANGED")
+  frame:RegisterEvent("PLAYER_REGEN_DISABLED")
+  frame:SetScript("OnEvent", function(self, event)
+    if event == "PLAYER_REGEN_DISABLED" then
+      if self:IsShown() then
+        MerfinPlus.pendingOptionsOpen = {}
+        self:Hide()
+        self:RegisterEvent("PLAYER_REGEN_ENABLED")
+      end
+    elseif event == "PLAYER_REGEN_ENABLED" then
+      self:UnregisterEvent("PLAYER_REGEN_ENABLED")
+      local pending = MerfinPlus.pendingOptionsOpen
+      MerfinPlus.pendingOptionsOpen = nil
+      if pending then MerfinPlus:ToggleStandalone(pending.which, pending.sub) end
+    else
+      ScaleStandaloneFrame(self)
+    end
+  end)
   frame:SetPoint("CENTER")
   frame:SetAlpha(1)
   frame:SetFrameStrata("FULLSCREEN_DIALOG")
@@ -897,6 +933,29 @@ RefreshResetPromptTheme = function(frame)
   MerfinPlus:ApplyUIFontSizeDelta(frame)
 end
 
+local function ApplyStandaloneSectionBranding(frame, section)
+  if not frame then return end
+  local branding = section and section.branding
+  frame.ActiveOptionsSection = section
+  if frame.VersionText then
+    frame.VersionText:SetText((branding and branding.version) or Merfin.GetAddOnMetadata("MerfinPlus", "Version") or "???")
+  end
+  if frame.TitleText then
+    frame.TitleText:SetText(
+      branding and branding.title
+      or ("Merfin " .. ThemeColorEscape(theme.accent) .. "Plus|r")
+    )
+  end
+  if frame.LogoTexture then
+    frame.LogoTexture:SetTexture(branding and branding.logo or standaloneLogoPath)
+    if branding and type(branding.logoCoords) == "table" then
+      frame.LogoTexture:SetTexCoord(unpack(branding.logoCoords))
+    else
+      frame.LogoTexture:SetTexCoord(0, 1, 0, 1)
+    end
+  end
+end
+
 local function RefreshStandaloneFrameTheme(frame)
   if not frame then return end
   if frame.BackdropTexture then frame.BackdropTexture:SetAlpha(theme.backdropAlpha or 0) end
@@ -924,9 +983,7 @@ local function RefreshStandaloneFrameTheme(frame)
     frame.ContentContainer:SetBackdropColor(unpack(theme.canvas))
     frame.ContentContainer:SetBackdropBorderColor(unpack(theme.border))
   end
-  if frame.TitleText then
-    frame.TitleText:SetText("Merfin " .. ThemeColorEscape(theme.accent) .. "Plus|r")
-  end
+  ApplyStandaloneSectionBranding(frame, frame.ActiveOptionsSection)
   if frame.VersionText then frame.VersionText:SetTextColor(unpack(theme.muted)) end
   if frame.Logo then
     if frame.Logo.PortraitFrame then
@@ -1035,6 +1092,9 @@ local function ApplyMerfinPlusDropdowns(option)
   if type(option) ~= "table" then
     return
   end
+  if option.type == "execute" and not option.dialogControl and not option.control then
+    option.dialogControl = "MerfinPlusButton"
+  end
   if option.type == "select" and not option.dialogControl and not option.control then
     option.dialogControl = "MerfinPlusDropdown"
   end
@@ -1059,6 +1119,7 @@ local function ScheduleStandaloneInsetRefresh(root)
     root.merfinPlusInsetRefreshScheduled = nil
     ApplyStandaloneInsetBackdrops(root, root)
     if root.frame then MerfinPlus:ApplyUIFontSizeDelta(root.frame) end
+    if root.merfinPlusRefreshTabLayout then root.merfinPlusRefreshTabLayout(root) end
   end
   if C_Timer and C_Timer.After then
     C_Timer.After(0, refresh)
@@ -1247,6 +1308,10 @@ local function GuardStandaloneInsetWidget(widget, root)
       tab.merfinPlusThemeHovered = nil
     end
 
+    if self.merfinPlusOriginalBuildTabs then
+      self.BuildTabs = self.merfinPlusOriginalBuildTabs
+      self.merfinPlusOriginalBuildTabs = nil
+    end
     if self.merfinPlusOriginalInsetFire then
       self.Fire = self.merfinPlusOriginalInsetFire
       self.merfinPlusOriginalInsetFire = nil
@@ -1268,6 +1333,16 @@ local function GuardStandaloneInsetWidget(widget, root)
   end
   widget.merfinPlusInsetReleaseGuarded = true
 
+  if widget.type == "TabGroup" and widget.BuildTabs then
+    local BuildTabs = widget.BuildTabs
+    widget.merfinPlusOriginalBuildTabs = BuildTabs
+    widget.BuildTabs = function(self, ...)
+      local result = BuildTabs(self, ...)
+      ScheduleStandaloneInsetRefresh(root)
+      return result
+    end
+  end
+
   if widget.AddChild and not widget.merfinPlusOriginalInsetAddChild then
     local AddChild = widget.AddChild
     widget.merfinPlusOriginalInsetAddChild = AddChild
@@ -1277,6 +1352,7 @@ local function GuardStandaloneInsetWidget(widget, root)
       if child then
         child.merfinPlusInsetParent = self
         ApplyStandaloneInsetBackdrops(child, root)
+        ScheduleStandaloneInsetRefresh(root)
       end
       return result
     end
@@ -1330,32 +1406,6 @@ local function SuppressStandaloneNativeTab(tab, widget)
   end
 end
 
-local function RestoreStandaloneNativeTab(tab, widget)
-  if not tab or tab.merfinPlusThemeOwner ~= widget then return end
-  local backdrop = tab.backdrop
-  local backdropAlphas = widget.merfinPlusOriginalTabBackdropAlphas
-  if backdrop and backdropAlphas and backdropAlphas[backdrop] ~= nil then
-    backdrop:SetAlpha(backdropAlphas[backdrop])
-  end
-  local sources = widget.merfinPlusOriginalTabTextureSources
-  local alphas = widget.merfinPlusOriginalTextureAlphas
-  for _, texture in ipairs(GetStandaloneTabTextures(tab)) do
-    if texture then
-      local source = sources and sources[texture]
-      if source ~= nil then
-        if source then
-          texture:SetTexture(source)
-        else
-          texture:SetTexture(nil)
-        end
-      end
-      if alphas and alphas[texture] ~= nil then
-        texture:SetAlpha(alphas[texture])
-      end
-    end
-  end
-end
-
 local function RefreshStandaloneFlatTab(tab)
   if not tab then return end
   if not tab.merfinPlusThemeBackground then
@@ -1402,15 +1452,15 @@ local function RefreshStandaloneFlatTab(tab)
   if not tab.merfinPlusThemeHooked then
     tab:HookScript("OnEnter", function(self)
       self.merfinPlusThemeHovered = true
-      if theme.modernTabs and self.merfinPlusThemeOwner then RefreshStandaloneFlatTab(self) end
+      if self.merfinPlusThemeOwner then RefreshStandaloneFlatTab(self) end
     end)
     tab:HookScript("OnLeave", function(self)
       self.merfinPlusThemeHovered = nil
-      if theme.modernTabs and self.merfinPlusThemeOwner then RefreshStandaloneFlatTab(self) end
+      if self.merfinPlusThemeOwner then RefreshStandaloneFlatTab(self) end
     end)
     tab:HookScript("OnShow", function(self)
       local owner = self.merfinPlusThemeOwner
-      if theme.modernTabs and owner then
+      if owner then
         SuppressStandaloneNativeTab(self, owner)
         RefreshStandaloneFlatTab(self)
       end
@@ -1423,7 +1473,7 @@ local function RefreshStandaloneFlatTab(tab)
     tab.SetSelected = function(self, ...)
       local result = SetSelected(self, ...)
       local owner = self.merfinPlusThemeOwner
-      if theme.modernTabs and owner then
+      if owner then
         SuppressStandaloneNativeTab(self, owner)
         RefreshStandaloneFlatTab(self)
       end
@@ -1433,7 +1483,7 @@ local function RefreshStandaloneFlatTab(tab)
     tab.SetDisabled = function(self, ...)
       local result = SetDisabled(self, ...)
       local owner = self.merfinPlusThemeOwner
-      if theme.modernTabs and owner then
+      if owner then
         SuppressStandaloneNativeTab(self, owner)
         RefreshStandaloneFlatTab(self)
       end
@@ -1446,31 +1496,10 @@ end
 local function SkinStandaloneTabs(widget)
   for _, tab in ipairs(widget.tabs or {}) do
     tab.merfinPlusThemeOwner = widget
-    local active = tab.selected == true
-    local textures = GetStandaloneTabTextures(tab)
-    if theme.modernTabs then
-      SuppressStandaloneNativeTab(tab, widget)
-      RefreshStandaloneFlatTab(tab)
-    else
-      RestoreStandaloneNativeTab(tab, widget)
-      for _, texture in ipairs(textures) do
-        if texture then
-          if texture.SetDesaturated then texture:SetDesaturated(false) end
-          texture:SetVertexColor(1, 1, 1, 1)
-          texture:SetAlpha(
-            (widget.merfinPlusOriginalTextureAlphas and widget.merfinPlusOriginalTextureAlphas[texture])
-              or 1
-          )
-        end
-      end
-      if tab.merfinPlusThemeBackground then tab.merfinPlusThemeBackground:Hide() end
-      if tab.merfinPlusThemeLine then tab.merfinPlusThemeLine:Hide() end
-      for _, border in ipairs(tab.merfinPlusThemeBorders or {}) do border:Hide() end
-    end
+    SuppressStandaloneNativeTab(tab, widget)
+    RefreshStandaloneFlatTab(tab)
     local text = tab.Text or tab:GetFontString()
-    if text then
-      SetStandaloneTextColor(widget, text, theme.text)
-    end
+    if text then SetStandaloneTextColor(widget, text, theme.text) end
   end
 end
 
@@ -1489,8 +1518,8 @@ ApplyStandaloneInsetBackdrops = function(widget, root)
     GuardStandaloneInsetWidget(widget, root)
   elseif widget.type == "Heading" then
     SetStandaloneTextColor(widget, widget.label, theme.accentBright)
-    SetStandaloneVertexColor(widget, widget.left, theme.accent, 0.62)
-    SetStandaloneVertexColor(widget, widget.right, theme.accent, 0.62)
+    SetStandaloneVertexColor(widget, widget.left, theme.accent, IsStandaloneSection(widget, "plugin:MerfinUI") and 0 or 0.62)
+    SetStandaloneVertexColor(widget, widget.right, theme.accent, IsStandaloneSection(widget, "plugin:MerfinUI") and 0 or 0.62)
     GuardStandaloneInsetWidget(widget, root)
   elseif widget.type == "CheckBox" or widget.type == "MerfinPlusNpcToggle" then
     SetStandaloneVertexColor(widget, widget.checkbg, theme.muted, 0.90)
@@ -1523,16 +1552,19 @@ ApplyStandaloneInsetBackdrops = function(widget, root)
     SetStandaloneTextColor(widget, widget.titletext, theme.accentBright)
     local hideBorder = IsStandaloneSection(widget, "assignments")
       or IsStandaloneSection(widget, "raidCooldowns")
+      or IsStandaloneSection(widget, "plugin:MerfinUI")
     MakeStandaloneInsetTransparent(widget, widget.content and widget.content:GetParent(), not hideBorder)
     GuardStandaloneInsetWidget(widget, root)
   elseif widget.type == "TreeGroup" then
     local hideBorder = IsRaidSettingsCooldownRaidContainer(widget)
+      or IsStandaloneSection(widget, "plugin:MerfinUI")
     MakeStandaloneInsetTransparent(widget, widget.treeframe, not hideBorder)
     MakeStandaloneInsetTransparent(widget, widget.border, not hideBorder)
     WidenRaidCooldownBossTree(widget)
     GuardStandaloneInsetWidget(widget, root)
   elseif widget.type == "DropdownGroup" then
     local hideBorder = IsRaidSettingsCooldownRaidContainer(widget)
+      or IsStandaloneSection(widget, "plugin:MerfinUI")
     MakeStandaloneInsetTransparent(widget, widget.border, not hideBorder)
     SetStandaloneTextColor(widget, widget.titletext, theme.accentBright)
     GuardStandaloneInsetWidget(widget, root)
@@ -1714,7 +1746,6 @@ function MerfinPlus:SetupOptions()
   mediaOptions.childGroups = nil
 
   local optionSections = {}
-  registeredLocalizationRoots[standaloneOptionsName] = standaloneOptions
 
   if raidPack then
     table.insert(optionSections, {
@@ -1773,6 +1804,16 @@ function MerfinPlus:SetupOptions()
   })
 
   table.insert(optionSections, {
+    key = "about",
+    labelKey = "About",
+    label = self:T("About"),
+    icon = "Interface\\AddOns\\MerfinPlus\\Media\\icons\\nav_about.tga",
+    aliases = { "about", "links" },
+    options = self:BuildAboutOptions(),
+    order = 55,
+  })
+
+  table.insert(optionSections, {
     key = "profiles",
     labelKey = "Profiles",
     label = self:T("Profiles"),
@@ -1782,23 +1823,114 @@ function MerfinPlus:SetupOptions()
     order = 60,
   })
 
+  local coreOptionSections = optionSections
+  optionSections = {}
+  local pluginSections = {}
   local sectionsByKey = {}
   local sectionByAlias = {}
 
-  for _, section in ipairs(optionSections) do
-    if section.options then
-      section.options.order = section.order
-      standaloneOptions.args[section.key] = section.options
-      sectionsByKey[section.key] = section
+  local function ComparePluginSections(left, right)
+    local leftID = strlower(left.pluginID)
+    local rightID = strlower(right.pluginID)
+    if leftID ~= rightID then return leftID < rightID end
+    return left.pluginID < right.pluginID
+  end
 
-      for _, alias in ipairs(section.aliases) do
-        sectionByAlias[alias] = section
+  local function RebuildOptionSections()
+    for index = #optionSections, 1, -1 do
+      optionSections[index] = nil
+    end
+    for key in pairs(standaloneOptions.args) do
+      standaloneOptions.args[key] = nil
+    end
+    for key in pairs(sectionsByKey) do
+      sectionsByKey[key] = nil
+    end
+    for alias in pairs(sectionByAlias) do
+      sectionByAlias[alias] = nil
+    end
+
+    local firstPlugins = {}
+    for _, section in pairs(pluginSections) do
+      table.insert(firstPlugins, section)
+    end
+    table.sort(firstPlugins, ComparePluginSections)
+
+    for _, section in ipairs(firstPlugins) do
+      table.insert(optionSections, section)
+    end
+    for _, section in ipairs(coreOptionSections) do
+      if section.key ~= "profiles" then
+        table.insert(optionSections, section)
+      end
+    end
+    for _, section in ipairs(coreOptionSections) do
+      if section.key == "profiles" then
+        table.insert(optionSections, section)
+      end
+    end
+
+    for _, section in ipairs(optionSections) do
+      if section.options then
+        if not section.pluginID then section.options.order = section.order end
+        standaloneOptions.args[section.key] = section.options
+        sectionsByKey[section.key] = section
+        for _, alias in ipairs(section.aliases) do
+          alias = strlower(alias)
+          if not sectionByAlias[alias] then sectionByAlias[alias] = section end
+        end
       end
     end
   end
 
+  local function BuildPluginSection(id, plugin)
+    if not plugin or not plugin.definition.options then
+      pluginSections[id] = nil
+      RebuildOptionSections()
+      return true
+    end
+
+    local definition = plugin.definition
+    local options = definition.options
+    if type(options) == "function" then
+      local succeeded, result = pcall(options, plugin)
+      if not succeeded then return false, tostring(result) end
+      options = result
+    end
+    if type(options) ~= "table" or options.type ~= "group" then
+      return false, "plugin options must resolve to an AceConfig group table"
+    end
+
+    ApplyMerfinPlusDropdowns(options)
+
+    local aliases = {}
+    for _, alias in ipairs(definition.aliases or {}) do
+      if type(alias) == "string" and alias ~= "" then table.insert(aliases, alias) end
+    end
+    if #aliases == 0 then table.insert(aliases, strlower(id)) end
+
+    pluginSections[id] = {
+      key = "plugin:" .. id,
+      pluginID = id,
+      label = definition.name or id,
+      icon = definition.icon,
+      aliases = aliases,
+      options = options,
+      branding = definition.branding,
+    }
+    RebuildOptionSections()
+    return true
+  end
+
+  RebuildOptionSections()
+  for id, plugin in pairs(self._plugins) do
+    local registered, reason = BuildPluginSection(id, plugin)
+    if not registered then
+      self.PrettyPrint("Options plugin " .. id .. " was not registered: " .. tostring(reason))
+    end
+  end
+
   if capabilities.localizationValidation then
-    self:StripOptionLocalizationMetadata(standaloneOptions)
     localizationSchemaValid, localizationSchemaError =
       self:ValidateLocalizedOptionsTrees(registeredLocalizationRoots)
     if not localizationSchemaValid then
@@ -2069,6 +2201,7 @@ function MerfinPlus:SetupOptions()
   end
 
   local standaloneFrame = GetStandaloneFrame()
+  standaloneFrame.AceContainer.merfinPlusRefreshTabLayout = KeepAssignmentTabsOnOneRow
   if not standaloneFrame.merfinPlusViewStateHooked then
     standaloneFrame:HookScript("OnHide", function()
       MerfinPlus:SaveAssignmentOptionsViewState()
@@ -2079,6 +2212,11 @@ function MerfinPlus:SetupOptions()
 
   -- Toggle standalone and optionally preselect section/subtab
   function MerfinPlus:ToggleStandalone(which, sub)
+    if InCombatLockdown() then
+      self.pendingOptionsOpen = { which = which, sub = sub }
+      self.optionsStandaloneFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+      return
+    end
     local frame = GetStandaloneFrame()
     local viewState = GetStoredViewState()
 
@@ -2097,6 +2235,7 @@ function MerfinPlus:SetupOptions()
       or (sectionsByKey[viewState.activeMainNav] and viewState.activeMainNav)
       or defaultSectionKey
     viewState.activeMainNav = selectedKey
+    ApplyStandaloneSectionBranding(frame, sectionsByKey[selectedKey])
     if selectedKey == "assignments" then
       if not validAssignmentTabs[sub] then
         sub = validAssignmentTabs[viewState.activeAssignmentsTab] and viewState.activeAssignmentsTab or "raid"
@@ -2253,6 +2392,35 @@ function MerfinPlus:SetupOptions()
     end
   end
 
+  function MerfinPlus:OnOptionsPluginChanged(id, plugin)
+    local registered, reason = BuildPluginSection(id, plugin)
+    if not registered then return false, reason end
+
+    defaultSectionKey = optionSections[1] and optionSections[1].key or defaultSectionKey
+    aceConfigRegistry:NotifyChange(standaloneOptionsName)
+    local frame = self.optionsStandaloneFrame
+    if frame and frame:IsShown() then
+      local viewState = GetStoredViewState()
+      local selectedKey = sectionsByKey[viewState.activeMainNav]
+        and viewState.activeMainNav or defaultSectionKey
+      self:ToggleStandalone(selectedKey)
+    end
+    return true
+  end
+
+  function MerfinPlus:OpenRegisteredOptionsPlugin(id, sub)
+    local section = pluginSections[id]
+    if not section then return false, "options plugin is not available" end
+    self:ToggleStandalone(section.key, sub)
+    return true
+  end
+
+  local pendingPluginOpen = self.pendingOptionsPluginOpen
+  self.pendingOptionsPluginOpen = nil
+  if pendingPluginOpen then
+    self:OpenRegisteredOptionsPlugin(pendingPluginOpen.id, pendingPluginOpen.sub)
+  end
+
   local function PrintSlashHelp()
     local lines = {
       MerfinPlus:T("Commands:"),
@@ -2274,7 +2442,12 @@ function MerfinPlus:SetupOptions()
     msg = strlower(strtrim(msg or ""))
 
     if msg == "" then
-      MerfinPlus:ToggleStandalone()
+      for _, section in ipairs(optionSections) do
+        if not section.pluginID then
+          MerfinPlus:ToggleStandalone(section.key)
+          return
+        end
+      end
       return
     end
 
@@ -2295,6 +2468,12 @@ function MerfinPlus:SetupOptions()
       MerfinPlus:ToggleStandalone(section.key, sub)
     else
       PrintSlashHelp()
+    end
+  end
+
+  function MerfinPlus:OpenFirstOptionsTab()
+    if optionSections[1] then
+      self:ToggleStandalone(optionSections[1].key)
     end
   end
 

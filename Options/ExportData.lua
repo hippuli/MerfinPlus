@@ -498,15 +498,15 @@ local function GetKnownGroupSpecializationLookup()
 end
 
 function MerfinPlus:GetExportExpansionInfo()
-  if MerfinPlus.IsMoP() then
+  if Merfin.IsMists() then
     return "mop", "MoP", 90
-  elseif MerfinPlus.IsCata() then
+  elseif Merfin.IsCata() then
     return "cataclysm", "Cataclysm", 85
-  elseif MerfinPlus.IsWrath() then
+  elseif Merfin.IsWrath() then
     return "wotlk", "WotLK", 80
-  elseif MerfinPlus.IsTBC() then
+  elseif Merfin.IsTBC() then
     return "tbc", "TBC", 70
-  elseif MerfinPlus.IsVanilla() then
+  elseif Merfin.IsClassic() then
     return "classic", "Classic", 60
   end
   return nil, "Unknown", nil

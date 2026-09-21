@@ -8,10 +8,6 @@ local L = setmetatable({}, {
     return MerfinPlus:T(key)
   end,
 })
-local IsWrath = MerfinPlus.IsWrath
-local IsMoP = MerfinPlus.IsMoP
-local IsCata = MerfinPlus.IsCata
-local IsTBC = MerfinPlus.IsTBC
 
 local function DeserializeJSON(source)
   if C_EncodingUtil and C_EncodingUtil.DeserializeJSON then
@@ -37,11 +33,11 @@ local CATA_WOWSIM_SPEC_BY_CLASS_ID = {
 }
 
 local function GetEffectiveSpecID()
-  if IsWrath() or IsTBC() then
+  if Merfin.IsWrath() or Merfin.IsTBC() then
     return select(2, Merfin.GetPlayerRole())
-  elseif IsMoP() then
+  elseif Merfin.IsMists() then
     return GetSpecializationInfoForClassID(select(3, UnitClass("player")), C_SpecializationInfo.GetSpecialization())
-  elseif IsCata() then
+  elseif Merfin.IsCata() then
     local classID = select(3, UnitClass("player"))
     local treeIndex = GetPrimaryTalentTree()
     local specs = classID and CATA_WOWSIM_SPEC_BY_CLASS_ID[classID]
@@ -90,7 +86,7 @@ function Merfin.GetActiveItemSuffix()
 end
 
 function MerfinPlus:BuildWoWSimOptions()
-  if not (IsWrath() or IsTBC() or IsCata() or IsMoP()) then
+  if not (Merfin.IsWrath() or Merfin.IsTBC() or Merfin.IsCata() or Merfin.IsMists()) then
     return nil
   end
   -- ==== WoW Sim Importer ====
@@ -111,7 +107,7 @@ function MerfinPlus:BuildWoWSimOptions()
     [14] = 14, -- Trinket 2
     [15] = 16, -- Mainhand
     [16] = 17, -- Offhand
-    [17] = (IsWrath() or IsTBC() and 18) or nil, -- Relic/Ranged
+    [17] = (Merfin.IsWrath() or Merfin.IsTBC() and 18) or nil, -- Relic/Ranged
   }
 
   local SLOT_NAMES = {
@@ -131,7 +127,7 @@ function MerfinPlus:BuildWoWSimOptions()
     [15] = _G.INVTYPE_CLOAK,
     [16] = _G.INVTYPE_WEAPONMAINHAND,
     [17] = _G.INVTYPE_WEAPONOFFHAND,
-    [18] = (IsWrath() or IsTBC()) and _G.INVTYPE_RELIC or nil,
+    [18] = (Merfin.IsWrath() or Merfin.IsTBC()) and _G.INVTYPE_RELIC or nil,
   }
 
   -- -------------------------
@@ -239,7 +235,7 @@ function MerfinPlus:BuildWoWSimOptions()
     [7] = "SHAMAN",
     [8] = "MAGE",
     [9] = "WARLOCK",
-    [10] = IsMoP() and "MONK" or nil,
+    [10] = Merfin.IsMists() and "MONK" or nil,
     [11] = "DRUID",
   }
 
@@ -292,7 +288,7 @@ function MerfinPlus:BuildWoWSimOptions()
     return CLASS_SPEC_IDS
   end
 
-  local CLASS_SPEC_IDS = IsWrath()
+  local CLASS_SPEC_IDS = Merfin.IsWrath()
       and {
 
         DRUID = {
@@ -355,7 +351,7 @@ function MerfinPlus:BuildWoWSimOptions()
           { specID = 252, specKey = "DeathKnightUnholy", icon = 135775 },
         },
       }
-    or IsTBC()
+    or Merfin.IsTBC()
       and {
         DRUID = {
           { specID = 283, specKey = "DruidBalance", icon = 136096 }, -- Balance
@@ -411,10 +407,10 @@ function MerfinPlus:BuildWoWSimOptions()
           { specID = 301, specKey = "WarlockDestruction", icon = 136186 },
         },
       }
-    or IsCata() and (function()
+    or Merfin.IsCata() and (function()
       return BuildClassSpecIDsFromClient(cataSpecsByClassID, true)
     end)()
-    or IsMoP() and (function()
+    or Merfin.IsMists() and (function()
       return BuildClassSpecIDsFromClient(mopSpecsByClassID)
     end)()
     or {}
@@ -801,14 +797,14 @@ function MerfinPlus:BuildWoWSimOptions()
         order = o + 0.1,
         width = "full",
 
-        hidden = (IsMoP() or IsCata()) and function()
+        hidden = (Merfin.IsMists() or Merfin.IsCata()) and function()
           local p = selectedProfileKey and db.global.wowSims.profiles[selectedProfileKey]
           return not p or not p.itemSuffixes or p.itemSuffixes[slotID] == nil
         end or true,
 
         values = function()
           local vals = {}
-          if IsCata() then
+          if Merfin.IsCata() then
             for id, name in pairs(CATA_SUFFIX_NAME_BY_ID) do
               vals[id] = name
             end
@@ -836,7 +832,7 @@ function MerfinPlus:BuildWoWSimOptions()
         name = L["+ Suffix"],
         order = o + 0.05,
         width = 0.8,
-        hidden = (IsMoP() or IsCata()) and function()
+        hidden = (Merfin.IsMists() or Merfin.IsCata()) and function()
           local p = selectedProfileKey and db.global.wowSims.profiles[selectedProfileKey]
           return not p or not p.items or not p.items[slotID] or (p.itemSuffixes and p.itemSuffixes[slotID])
         end or true,
@@ -844,7 +840,7 @@ function MerfinPlus:BuildWoWSimOptions()
           local p = db.global.wowSims.profiles[selectedProfileKey]
           p.itemSuffixes = p.itemSuffixes or {}
 
-          p.itemSuffixes[slotID] = IsCata() and -129 or -336
+          p.itemSuffixes[slotID] = Merfin.IsCata() and -129 or -336
 
           NotifySimChanged()
           AceConfigRegistry:NotifyChange("MerfinPlus_WoWSim")
@@ -856,7 +852,7 @@ function MerfinPlus:BuildWoWSimOptions()
         desc = "|cffff4040" .. L["Delete this item entry."] .. "|r",
         order = o + 0.15,
         width = 0.3,
-        hidden = (IsMoP() or IsCata()) and function()
+        hidden = (Merfin.IsMists() or Merfin.IsCata()) and function()
           local p = selectedProfileKey and db.global.wowSims.profiles[selectedProfileKey]
           return not p or not p.itemSuffixes or p.itemSuffixes[slotID] == nil
         end or true,
@@ -962,7 +958,7 @@ function MerfinPlus:BuildWoWSimOptions()
     name = L["WoW Sim"],
     childGroups = "tab",
     hidden = function()
-      return not IsWrath() and not IsTBC() and not IsCata() and not IsMoP()
+      return not Merfin.IsWrath() and not Merfin.IsTBC() and not Merfin.IsCata() and not Merfin.IsMists()
     end,
     args = {
 

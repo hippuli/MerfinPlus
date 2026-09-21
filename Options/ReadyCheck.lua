@@ -2,7 +2,7 @@
 
 local MerfinPlus = LibStub("AceAddon-3.0"):GetAddon("MerfinPlus")
 local theme = MerfinPlus.UITheme
-if not (MerfinPlus.IsTBC and MerfinPlus:IsTBC()) then
+if not (Merfin.IsTBC()) then
   return
 end
 

@@ -1,7 +1,7 @@
 ## Interface: 20506
 ## Title: MerfinPlus
 ## Author: Merfin
-## Version: 2.99
+## Version: 3.02
 ## X-Website: discord.gg/merfin
 ## X-Flavor: TBC
 ## Notes: Inserts Merfin media into LibSharedMedia's storage.
@@ -85,11 +85,14 @@ Options\SUIWidgets\AceGUIContainer-MerfinPlusOptionsContent.lua
 Options\SUIWidgets\AceGUILayout-MerfinPlusNavList.lua
 Options\SUIWidgets\AceGUIWidget-MerfinPlusNavButton.lua
 Options\SUIWidgets\AceGUIWidget-MerfinPlusDropdown.lua
+Options\SUIWidgets\AceGUIWidget-MerfinPlusButton.lua
 Options\SUIWidgets\AceGUIWidgets-MerfinPlusExport.lua
 Options\SUIWidgets\AceGUIWidget-MerfinPlusRaidAssignments.lua
 Options\SUIWidgets\AceGUIWidget-MerfinPlusPreBossGroups.lua
 Options\SUIWidgets\AceGUIWidget-MerfinPlusRaidCooldownActivation.lua
 Options\SUIWidgets\AceGUIWidget-MerfinPlusReadyCheckPreview.lua
+Options\SUIWidgets\AceGUIWidget-MerfinPlusLinks.lua
+Options\About.lua
 Options.lua
 MinimapButton.lua
 Media\Media.xml

@@ -354,7 +354,7 @@ function Tracker:ApplyCooldownEligibility(unitName)
     local talentAllowed = not data.tReq
       or (unitData.talents
         and TalentRank(unitData, data.tabIndex, data.talentRow, data.talentColumn) > 0)
-    local specAllowed = not (MerfinPlus.IsMoP and MerfinPlus:IsMoP())
+    local specAllowed = not (Merfin.IsMists())
       or SpecMatches(data.spec, unitData.spec)
 
     if raceAllowed and talentAllowed and specAllowed then
@@ -474,7 +474,7 @@ function Tracker:ReadTalents(unitName, isInspect)
     return false
   end
 
-  if MerfinPlus.IsMoP and MerfinPlus:IsMoP() then
+  if Merfin.IsMists() then
     local specializationAPI = C_SpecializationInfo
     local getSpecialization = specializationAPI and specializationAPI.GetSpecialization
       or GetSpecialization
@@ -674,10 +674,9 @@ function Tracker:ResolveReincarnationSpellID(unitData)
     return nil
   end
 
-  local isMoP = MerfinPlus.IsMoP and MerfinPlus:IsMoP()
-  if isMoP and cooldowns[20608] then
+  if Merfin.IsMists() and cooldowns[20608] then
     return 20608
-  elseif not isMoP and cooldowns[21169] then
+  elseif not Merfin.IsMists() and cooldowns[21169] then
     return 21169
   end
   if cooldowns[20608] then

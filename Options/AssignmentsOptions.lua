@@ -446,8 +446,6 @@ RegisterInterruptManualWidget(
 )
 
 function MerfinPlus:BuildAssignmentsOptions()
-  local isTBC = self.IsTBC and self.IsTBC()
-  local showTBCWeakAuraAssignments = isTBC
   local function Settings()
     return self:GetAssignmentSettings()
   end
@@ -1052,7 +1050,7 @@ function MerfinPlus:BuildAssignmentsOptions()
           },
         },
       },
-      gurtogg = showTBCWeakAuraAssignments and {
+      gurtogg = Merfin.IsTBC() and {
         type = "group",
         name = self:T("WA Assignments"),
         order = 15,

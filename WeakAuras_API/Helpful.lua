@@ -21,7 +21,7 @@ local GetDefaultSpellName = function(spellId)
 end
 
 Merfin.GetSpellName = function(spellId)
-  if Merfin.IsRPSpecificLocalization and Merfin.IsRPSpecificLocalization() then
+  if Merfin.IsRPSpecificLocalization() then
     local locale = (Merfin.GetRPTextLocale and Merfin.GetRPTextLocale()) or (GetLocale and GetLocale()) or "enUS"
     local localeTable = Merfin.RaidSpellLocalizations and Merfin.RaidSpellLocalizations[locale]
     local localizedName = localeTable and (localeTable[spellId] or localeTable[tostring(spellId)])

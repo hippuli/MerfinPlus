@@ -216,13 +216,15 @@ function MerfinPlus:ApplyUIFontSizeDelta(root)
     if not baseSize then
       baseSize = currentSize
       adjustedFontSizes[object] = baseSize
-    elseif math.abs(currentSize - (baseSize + 1)) < 0.01 then
+    elseif math.abs(currentSize - math.max(14, baseSize + 1)) < 0.01 then
       return
     elseif math.abs(currentSize - baseSize) >= 0.01 then
       baseSize = currentSize
       adjustedFontSizes[object] = baseSize
     end
-    self:SafeSetFontPath(object, fontPath, baseSize + 1, flags)
+    self:ApplyLocalizedFont(object,
+      "Interface\\AddOns\\MerfinPlus\\Media\\font\\SFUIDisplayCondensed-Semibold.otf",
+      math.max(14, baseSize + 1), flags)
   end, {})
 end
 
