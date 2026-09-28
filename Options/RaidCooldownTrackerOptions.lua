@@ -520,6 +520,15 @@ local function BuildDisplayOptions(rendererKey, expansionKey)
       order = 1,
       width = "full",
     },
+    -- The description can wrap to a second line at the default MoP window
+    -- width. Reserve a dedicated row so the globally enlarged UI font can
+    -- never overlap the first checkbox line.
+    noteSpacer = {
+      type = "description",
+      name = " ",
+      order = 2,
+      width = "full",
+    },
     showMyself = {
       type = "toggle", name = function() return T("Show Yourself") end, order = 10, width = 1.2,
       get = function() return Config().display.showMyself == true end,

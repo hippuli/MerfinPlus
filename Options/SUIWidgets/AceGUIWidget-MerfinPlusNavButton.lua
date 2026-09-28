@@ -3,7 +3,7 @@ local MerfinPlus = LibStub("AceAddon-3.0"):GetAddon("MerfinPlus")
 local theme = MerfinPlus.UITheme
 
 local WIDGET_TYPE = "MerfinPlusNavButton"
-local WIDGET_VERSION = 22
+local WIDGET_VERSION = 23
 
 local NAV_ITEM_HEIGHT = 48
 local NAV_ICON_SIZE = 24
@@ -29,52 +29,13 @@ local function ApplyLayout(widget)
 end
 
 local function UpdateNavButtonStyle(widget)
-  local bottom = widget.bottomStyle
-
-  if bottom then
-    if widget.selected then
-      SetTexture(widget.state, NAV_TEXTURE_PATH .. "profile_button_selected.png")
-    elseif widget.hovered then
-      SetTexture(widget.state, NAV_TEXTURE_PATH .. "profile_button_hover.png")
-    else
-      SetTexture(widget.state, NAV_TEXTURE_PATH .. "profile_button_normal.png")
-    end
-
-    widget.flare:Hide()
-    widget.arrow:Show()
-  else
-    if widget.selected then
-      SetTexture(widget.state, NAV_TEXTURE_PATH .. "nav_button_selected.png")
-      widget.state:SetAlpha(1)
-      widget.flare:SetAlpha(1)
-      widget.flare:Show()
-    elseif widget.hovered then
-      SetTexture(widget.state, NAV_TEXTURE_PATH .. "nav_button_selected.png")
-      widget.state:SetAlpha(1)
-      widget.flare:SetAlpha(1)
-      widget.flare:Show()
-    else
-      SetTexture(widget.state, NAV_TEXTURE_PATH .. "nav_button_normal.png")
-      widget.state:SetAlpha(1)
-      widget.flare:Hide()
-    end
-
-    widget.arrow:Hide()
-  end
-
-  if widget.selected or widget.hovered then
-    if widget.state.SetDesaturated then widget.state:SetDesaturated(true) end
-    widget.state:SetVertexColor(theme.accent[1], theme.accent[2], theme.accent[3], 1)
-    if widget.flare.SetDesaturated then widget.flare:SetDesaturated(true) end
-    widget.flare:SetVertexColor(theme.accent[1], theme.accent[2], theme.accent[3], 1)
-    widget.arrow:SetTextColor(theme.accentBright[1], theme.accentBright[2], theme.accentBright[3], 1)
-  else
-    if widget.state.SetDesaturated then widget.state:SetDesaturated(false) end
-    widget.state:SetVertexColor(1, 1, 1, 1)
-    if widget.flare.SetDesaturated then widget.flare:SetDesaturated(false) end
-    widget.flare:SetVertexColor(1, 1, 1, 1)
-    widget.arrow:SetTextColor(theme.muted[1], theme.muted[2], theme.muted[3], 1)
-  end
+  local background = widget.selected and theme.selected
+    or widget.hovered and theme.hover
+    or theme.shell
+  widget.state:SetColorTexture(background[1], background[2], background[3], widget.selected and 0.82 or (widget.hovered and 0.52 or 0.08))
+  widget.arrow:Hide()
+  widget.flare:SetColorTexture(theme.accent[1], theme.accent[2], theme.accent[3], 1)
+  if widget.selected then widget.flare:Show() else widget.flare:Hide() end
 
   if widget.selected or widget.hovered then
     widget.text:SetTextColor(1, 1, 1, 1)
@@ -172,9 +133,10 @@ local function Constructor()
   text:SetPoint("RIGHT", frame, "RIGHT", -24, 0)
 
   local flare = frame:CreateTexture(nil, "ARTWORK", nil, 2)
-  flare:SetPoint("RIGHT", frame, "RIGHT", 10, 0)
-  flare:SetSize(16, NAV_ITEM_HEIGHT)
-  SetTexture(flare, NAV_TEXTURE_PATH .. "nav_button_flare.png")
+  flare:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -8)
+  flare:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 8)
+  flare:SetWidth(3)
+  flare:SetColorTexture(theme.accent[1], theme.accent[2], theme.accent[3], 1)
   flare:Hide()
 
   local arrow = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")

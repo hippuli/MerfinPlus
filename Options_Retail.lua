@@ -6181,7 +6181,7 @@ function MerfinPlus:SetupOptions()
   AceConfigRegistry:RegisterOptionsTable("MerfinPlus", mainOptions)
   self.optionsFrame = AceConfigDialog:AddToBlizOptions("MerfinPlus", "MerfinPlus v" .. version)
 
-  if Merfin.IsTBC() or version == '3.02' then
+  if Merfin.IsTBC() or version == '3.04' then
     AceConfigRegistry:RegisterOptionsTable("MerfinPlus_RaidPack", raidPack)
     AceConfigDialog:AddToBlizOptions("MerfinPlus_RaidPack", "Raid WA Options", "MerfinPlus v" .. version)
   end
@@ -6217,7 +6217,7 @@ function MerfinPlus:SetupOptions()
       end)(),
     },
   }
-  if Merfin.IsTBC() or version == '3.02' then
+  if Merfin.IsTBC() or version == '3.04' then
     standaloneOptions.args.raidPack = (function()
       raidPack.order = 10
       raidPack.name = "Raid WA Options"

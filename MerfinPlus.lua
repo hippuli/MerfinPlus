@@ -390,19 +390,17 @@ function MerfinPlus:GetCapabilities()
     mediaOptions = type(self.BuildMediaOptions) == "function",
     wowSimOptions = type(self.BuildWoWSimOptions) == "function",
     raidPackOptions = type(self.BuildRaidPackOptions) == "function",
-    export = (Merfin.IsTBC() or Merfin.IsMists())
-      and type(self.BuildExportOptions) == "function"
-      and type(self.InitializeExportTracking) == "function",
-    raidAssignments = (Merfin.IsTBC() or Merfin.IsMists()) and type(self.InitializeRaidAssignments) == "function",
-    assignmentsOptions = (Merfin.IsTBC() or Merfin.IsMists()) and type(self.BuildAssignmentsOptions) == "function",
-    preBossGroups = Merfin.IsTBC() and type(self.InitializePreBossGroups) == "function",
+
+
+
+
     readyCheck = Merfin.IsTBC()
       and type(self.InitializeReadyCheck) == "function"
       and type(self.BuildReadyCheckOptions) == "function",
     raidCooldowns = (Merfin.IsTBC() or Merfin.IsMists())
       and type(self.BuildRaidCooldownTrackerOptions) == "function"
       and type(self.InitializeRaidCooldownTracker) == "function",
-    assignmentWidgets = (Merfin.IsTBC() or Merfin.IsMists()) and type(self.InitializeAssignmentWidgets) == "function",
+
     minimapButton = type(self.InitializeMinimapButton) == "function",
     mainSettings = type(self.GetMinimapButtonVisibleSetting) == "function"
       and type(self.SetMinimapButtonVisibleSetting) == "function"
@@ -431,15 +429,9 @@ function MerfinPlus:OnInitialize()
   self:RegisterMediaAliasesFromCallback()
   self:RegisterFonts()
   self:RegisterBars()
-  if capabilities.export then
-    self:InitializeExportTracking()
-  end
-  if capabilities.raidAssignments then
-    self:InitializeRaidAssignments()
-  end
-  if capabilities.preBossGroups then
-    self:InitializePreBossGroups()
-  end
+
+
+
   if capabilities.readyCheck then
     self:InitializeReadyCheck()
   end
@@ -455,9 +447,7 @@ function MerfinPlus:OnInitialize()
   if capabilities.minimapButton then
     self:InitializeMinimapButton()
   end
-  if capabilities.assignmentWidgets then
-    self:InitializeAssignmentWidgets()
-  end
+
   self:RegisterSoundPaths()
   if not Merfin.IsRetailOrForever() then
     MerfinPlus:PullTimerEnable()

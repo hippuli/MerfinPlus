@@ -209,7 +209,7 @@ local OPTION_ICONS = {
   merfinPlus = "Interface\\AddOns\\MerfinPlus\\Media\\icons\\merfinui_logo_2",
   t5 = "Interface\\AddOns\\MerfinPlus\\Media\\icons\\raid\\t5raid.png",
   t6 = "Interface\\AddOns\\MerfinPlus\\Media\\icons\\raid\\t6raid.png",
-  t6a = "Interface\\AddOns\\MerfinPlus\\Media\\icons\\raid\\assignmentsraid.png",
+  t6a = "Interface\\Icons\\INV_Misc_Note_05",
 }
 MerfinPlus.READY_CHECK_OPTION_ICONS = OPTION_ICONS
 

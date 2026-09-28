@@ -2,7 +2,7 @@
 Button Widget
 Graphical Button.
 -------------------------------------------------------------------------------]]
-local Type, Version = "MerfinPlusButton", 1
+local Type, Version = "MerfinPlusButton", 2
 local AceGUI = LibStub and LibStub("AceGUI-3.0", true)
 if not AceGUI or (AceGUI:GetWidgetVersion(Type) or 0) >= Version then return end
 
@@ -36,11 +36,13 @@ Methods
 local methods = {
 	["OnAcquire"] = function(self)
 		-- restore default values
-		self:SetHeight(24)
+		self:SetHeight(30)
 		self:SetWidth(200)
 		self:SetDisabled(false)
 		self:SetAutoWidth(false)
 		self:SetText()
+		self.pressed = nil
+		self.hovered = nil
 	end,
 
 	-- ["OnRelease"] = nil,
@@ -74,7 +76,7 @@ Constructor
 -------------------------------------------------------------------------------]]
 local MerfinPlus = LibStub("AceAddon-3.0"):GetAddon("MerfinPlus")
 local buttonFont = CreateFont("MerfinPlusOptionsButtonFont")
-buttonFont:SetFont("Interface\\AddOns\\MerfinPlus\\Media\\font\\SFUIDisplayCondensed-Semibold.otf", 13, "")
+buttonFont:SetFont("Interface\\AddOns\\MerfinPlus\\Media\\font\\SFUIDisplayCondensed-Semibold.otf", 14, "")
 
 local function Constructor()
 	local name = "MerfinPlusButton" .. AceGUI:GetNextWidgetNum(Type)
@@ -84,12 +86,29 @@ local function Constructor()
   frame:SetHighlightFontObject(buttonFont)
   frame:SetDisabledFontObject(buttonFont)
   frame:SetText("")
-  frame:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+  frame:SetBackdrop({
+    bgFile = "Interface\\Buttons\\WHITE8X8",
+    edgeFile = "Interface\\Buttons\\WHITE8X8",
+    edgeSize = 1,
+    insets = { left = 1, right = 1, top = 1, bottom = 1 },
+  })
+  local accent = frame:CreateTexture(nil, "ARTWORK")
+  accent:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -1)
+  accent:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 1)
+  accent:SetWidth(2)
   local function RefreshStyle()
     local theme = MerfinPlus.UITheme
-    frame:SetBackdropColor(unpack(theme.canvas))
-    local color = frame:IsMouseOver() and theme.accent or theme.borderSoft
-    frame:SetBackdropBorderColor(color[1], color[2], color[3], 0.6)
+    local widget = frame.obj
+    local enabled = frame:IsEnabled()
+    local background = widget and widget.pressed and theme.pressed
+      or widget and widget.hovered and enabled and theme.hover
+      or theme.surface
+    local border = widget and (widget.pressed or widget.hovered) and enabled and theme.accentSoft
+      or theme.borderSoft
+    frame:SetBackdropColor(background[1], background[2], background[3], enabled and 0.94 or 0.50)
+    frame:SetBackdropBorderColor(border[1], border[2], border[3], enabled and 0.78 or 0.35)
+    accent:SetColorTexture(theme.accent[1], theme.accent[2], theme.accent[3], 1)
+    if enabled and widget and (widget.hovered or widget.pressed) then accent:Show() else accent:Hide() end
     local textColor = frame:IsEnabled() and theme.text or theme.muted
     frame:GetFontString():SetTextColor(unpack(textColor))
   end
@@ -100,8 +119,24 @@ local function Constructor()
 
 	frame:EnableMouse(true)
 	frame:SetScript("OnClick", Button_OnClick)
-	frame:SetScript("OnEnter", function(button) RefreshStyle(); Control_OnEnter(button) end)
-	frame:SetScript("OnLeave", function(button) RefreshStyle(); Control_OnLeave(button) end)
+	frame:SetScript("OnEnter", function(button)
+		button.obj.hovered = true
+		RefreshStyle()
+		Control_OnEnter(button)
+	end)
+	frame:SetScript("OnLeave", function(button)
+		button.obj.hovered = nil
+		button.obj.pressed = nil
+		RefreshStyle()
+		Control_OnLeave(button)
+	end)
+	frame:SetScript("OnMouseDown", function(button)
+		if button:IsEnabled() then button.obj.pressed = true; RefreshStyle() end
+	end)
+	frame:SetScript("OnMouseUp", function(button)
+		button.obj.pressed = nil
+		RefreshStyle()
+	end)
 
 	local text = frame:GetFontString()
 	text:ClearAllPoints()
@@ -112,8 +147,10 @@ local function Constructor()
 	local widget = {
 		text  = text,
 		frame = frame,
+		accent = accent,
 		type  = Type
 	}
+	frame.obj = widget
 	for method, func in pairs(methods) do
 		widget[method] = func
 	end

@@ -8,7 +8,7 @@ local LSM = LibStub("LibSharedMedia-3.0", true)
 local WIDGET_TYPE = "MerfinPlusDropdown"
 local FONT_WIDGET_TYPE = "MerfinPlusFontDropdown"
 local STATUSBAR_WIDGET_TYPE = "MerfinPlusStatusbarDropdown"
-local WIDGET_VERSION = 13
+local WIDGET_VERSION = 15
 -- MerfinPlus currently exposes twelve UI locales. Keep every language visible
 -- in the language selector without requiring a mouse-wheel scroll.
 local MAX_VISIBLE_ROWS = 12
@@ -22,9 +22,9 @@ local template = BackdropTemplateMixin and "BackdropTemplate" or nil
 
 local backdrop = {
   bgFile = "Interface\\Buttons\\WHITE8X8",
-  edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-  edgeSize = 14,
-  insets = { left = 3, right = 3, top = 3, bottom = 3 },
+  edgeFile = "Interface\\Buttons\\WHITE8X8",
+  edgeSize = 1,
+  insets = { left = 1, right = 1, top = 1, bottom = 1 },
 }
 
 local colors = {
@@ -159,7 +159,51 @@ local function UpdateStatusBarPreview(texture, value)
   texture:Show()
 end
 
+local function ApplyIcon(texture, iconData, defaultWidth, defaultHeight)
+  if not texture then return end
+  local texturePath
+  if type(iconData) == "string" then
+    texturePath = iconData
+    iconData = nil
+  elseif type(iconData) == "table" then
+    texturePath = iconData.texture or iconData.path
+  end
+  if not texturePath then
+    texture:Hide()
+    return
+  end
+
+  local width = tonumber(iconData and iconData.width) or defaultWidth
+  local height = tonumber(iconData and iconData.height) or defaultHeight
+  local coords = iconData and iconData.coords
+  texture:SetTexture(texturePath)
+  if type(coords) == "table" and #coords >= 4 then
+    texture:SetTexCoord(coords[1], coords[2], coords[3], coords[4])
+  else
+    texture:SetTexCoord(0, 1, 0, 1)
+  end
+  texture:SetSize(width, height)
+  texture:SetVertexColor(1, 1, 1, 1)
+  texture:Show()
+  return width
+end
+
+local function UpdateSelectedIcon(self)
+  local iconData = not self.multiselect and self.icons and self.icons[self.value]
+  local iconWidth = ApplyIcon(self.selectedIcon, iconData, 20, 20)
+  self.text:ClearAllPoints()
+  if iconWidth then
+    self.selectedIcon:ClearAllPoints()
+    self.selectedIcon:SetPoint("LEFT", self.control, "LEFT", 10, 0)
+    self.text:SetPoint("TOPLEFT", self.control, "TOPLEFT", 10 + iconWidth + 6, -5)
+  else
+    self.text:SetPoint("TOPLEFT", self.control, "TOPLEFT", 10, -5)
+  end
+  self.text:SetPoint("BOTTOMRIGHT", self.control, "BOTTOMRIGHT", -28, 5)
+end
+
 local function UpdateSelectedText(self)
+  UpdateSelectedIcon(self)
   if not self.multiselect then
     ApplySelectedFont(
       self.text,
@@ -208,6 +252,16 @@ local function RefreshMenu(self)
     local value = self.order[itemIndex]
     if rowIndex <= visible and value ~= nil then
       button.value = value
+      local iconWidth = ApplyIcon(button.icon, self.icons and self.icons[value], 20, 20)
+      button.label:ClearAllPoints()
+      if iconWidth then
+        button.icon:ClearAllPoints()
+        button.icon:SetPoint("LEFT", button, "LEFT", 9, 0)
+        button.label:SetPoint("TOPLEFT", button, "TOPLEFT", 9 + iconWidth + 6, -4)
+      else
+        button.label:SetPoint("TOPLEFT", button, "TOPLEFT", 9, -4)
+      end
+      button.label:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -9, 4)
       ApplyMenuFont(button.label, value, self.list, self.mediaPreviewType)
       button.label:SetText(tostring(self.list[value] or value))
       if self.mediaPreviewType == "statusbar" then
@@ -225,6 +279,9 @@ local function RefreshMenu(self)
       button.value = nil
       if button.preview then
         button.preview:Hide()
+      end
+      if button.icon then
+        button.icon:Hide()
       end
       button:Hide()
     end
@@ -265,6 +322,8 @@ end
 
 local methods = {
   OnAcquire = function(self)
+    self.icons = {}
+    self.value = nil
     self:SetWidth(200)
     self:SetLabel()
     self:SetDisabled(false)
@@ -274,11 +333,13 @@ local methods = {
     self.order = {}
     self.itemValues = {}
     self.disabledItems = {}
-    self.value = nil
     self.matchLanguageFieldFont = nil
     self.menuOffset = 0
     if self.preview then
       self.preview:Hide()
+    end
+    if self.selectedIcon then
+      self.selectedIcon:Hide()
     end
     SetSelectedText(self, "")
     CloseMenu(self)
@@ -291,8 +352,15 @@ local methods = {
     self.order = nil
     self.itemValues = nil
     self.disabledItems = nil
+    self.icons = nil
     self.value = nil
     self.matchLanguageFieldFont = nil
+    if self.selectedIcon then
+      self.selectedIcon:Hide()
+    end
+    for _, button in ipairs(self.menuButtons or {}) do
+      if button.icon then button.icon:Hide() end
+    end
   end,
   ClearFocus = function(self)
     if self.open then
@@ -345,6 +413,12 @@ local methods = {
   end,
   RefreshTheme = function(self)
     UpdateControlStyle(self, false)
+    UpdateSelectedText(self)
+    RefreshMenu(self)
+  end,
+  SetIcons = function(self, icons)
+    self.icons = type(icons) == "table" and icons or {}
+    UpdateSelectedText(self)
     RefreshMenu(self)
   end,
   SetList = function(self, list, order)
@@ -421,6 +495,9 @@ local function Constructor(widgetType, mediaPreviewType)
   preview:SetPoint("BOTTOMRIGHT", control, "BOTTOMRIGHT", -26, 5)
   preview:Hide()
 
+  local selectedIcon = control:CreateTexture(nil, "ARTWORK", nil, 2)
+  selectedIcon:Hide()
+
   local text = control:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   text:SetPoint("TOPLEFT", control, "TOPLEFT", 10, -5)
   text:SetPoint("BOTTOMRIGHT", control, "BOTTOMRIGHT", -28, 5)
@@ -455,6 +532,7 @@ local function Constructor(widgetType, mediaPreviewType)
     label = label,
     text = text,
     preview = preview,
+    selectedIcon = selectedIcon,
     arrow = arrow,
     menu = menu,
     menuButtons = {},
@@ -478,6 +556,9 @@ local function Constructor(widgetType, mediaPreviewType)
     button.preview:SetPoint("TOPLEFT", button, "TOPLEFT", 4, -4)
     button.preview:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -4, 4)
     button.preview:Hide()
+
+    button.icon = button:CreateTexture(nil, "ARTWORK", nil, 2)
+    button.icon:Hide()
 
     button.label = button:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     MerfinPlus:ApplyLocalizedFont(button.label, FONT, 15)

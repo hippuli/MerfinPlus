@@ -1,7 +1,7 @@
 ## Interface: 20506
 ## Title: MerfinPlus
 ## Author: Merfin
-## Version: 3.02
+## Version: 3.04
 ## X-Website: discord.gg/merfin
 ## X-Flavor: TBC
 ## Notes: Inserts Merfin media into LibSharedMedia's storage.
@@ -39,8 +39,6 @@ libs\json.lua\json.lua
 Localizations\locales_addon.lua
 MerfinPlus.lua
 Data\TBC_AuctionCatalog.lua
-Data\TBC_BossPlanAssetCatalog.lua
-Data\RaidAssignmentFontCatalog.lua
 Data\RaidCooldownData\TBC_RaidCooldownData.lua
 Data\RaidCooldownData\RaidCooldownTrackerRegistry.lua
 Data\RaidCooldownData\TBC_RaidCooldownTrackerData.lua
@@ -57,38 +55,19 @@ Localizations\UI.lua
 Localizations\Content.lua
 Modernize.lua
 Options\UITheme.lua
-Options\ExportData.lua
-Options\RaidAssignmentMGMRA4Codec.lua
-Options\RaidAssignmentsData.lua
-WeakAuras_API\ArchimondeTremorAssignmentsBridge.lua
-WeakAuras_API\GurtoggAssignmentsBridge.lua
-WeakAuras_API\GurtoggManualSync.lua
-WeakAuras_API\InterruptAssignmentsBridge.lua
-WeakAuras_API\InterruptManualSync.lua
-WeakAuras_API\IllidanPhase2AssignmentsBridge.lua
-WeakAuras_API\IllidanPhase2ManualSync.lua
-Options\RaidAssignmentMFPProtocol.lua
-Options\RaidAssignmentBossPlanRenderer.lua
-Options\PreBossGroupsData.lua
-Options\AssignmentWidgets.lua
 Options\WoWSimDefaults_TBC.lua
 Options\WoWSimOptions.lua
 Options\MediaOptions.lua
-Options\AssignmentsOptions.lua
 Options\RaidCooldownOptions.lua
 Options\RaidCooldownTrackerOptions.lua
 Options\RaidAutoMarkerOptions.lua
 Options\ReadyCheck.lua
 Options\RaidPackOptions.lua
-Options\ExportOptions.lua
 Options\SUIWidgets\AceGUIContainer-MerfinPlusOptionsContent.lua
 Options\SUIWidgets\AceGUILayout-MerfinPlusNavList.lua
 Options\SUIWidgets\AceGUIWidget-MerfinPlusNavButton.lua
 Options\SUIWidgets\AceGUIWidget-MerfinPlusDropdown.lua
 Options\SUIWidgets\AceGUIWidget-MerfinPlusButton.lua
-Options\SUIWidgets\AceGUIWidgets-MerfinPlusExport.lua
-Options\SUIWidgets\AceGUIWidget-MerfinPlusRaidAssignments.lua
-Options\SUIWidgets\AceGUIWidget-MerfinPlusPreBossGroups.lua
 Options\SUIWidgets\AceGUIWidget-MerfinPlusRaidCooldownActivation.lua
 Options\SUIWidgets\AceGUIWidget-MerfinPlusReadyCheckPreview.lua
 Options\SUIWidgets\AceGUIWidget-MerfinPlusLinks.lua

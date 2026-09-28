@@ -15,9 +15,15 @@ local theme = MerfinPlus.UITheme
 
 -- Standalone options window: central size and layout controls.
 -- Change these values instead of scattering offsets through the frame creation code.
-local defaultFrameWidth = 1040
-local defaultFrameHeight = 700
+local compactWindow = Merfin.IsRetailOrForever()
+local defaultFrameWidth = compactWindow and 860 or 1040
+local defaultFrameHeight = compactWindow and 590 or 700
+-- Keep enough room for the navigation column and four-option plugin tabs.
+-- AceGUI starts truncating and overlapping controls below these dimensions.
+local minimumFrameWidth = compactWindow and 820 or 920
+local minimumFrameHeight = compactWindow and 560 or 620
 local logoBadgeSize = 58          -- Header logo width and height.
+local logoTextureSize = 48        -- Integer size keeps the logo edges crisp.
 local containerBorderOverlap = 5  -- Compensates transparent pixels in UI-Tooltip-Border.
 local contentLeft = 244           -- Left edge of the AceConfig page area.
 local navDividerX = contentLeft   -- Keep navigation flush with the AceConfig page area.
@@ -25,7 +31,14 @@ local navLeftInset = 4            -- Align nav buttons with the backdrop's visib
 local navFlareOverflow = 10       -- Exact right overhang of nav_button_flare.png.
 local contentTop = 76             -- Header height and main content starting area.
 local navItemHeight = 48          -- Height of one main navigation entry.
-local navFooterHeight = 126       -- Minimap toggle, theme selector and language selector.
+local useCompactSharedFooter = Merfin.IsTBC() or Merfin.IsMists() or Merfin.IsClassic() or Merfin.IsForever()
+local navFooterHeight = useCompactSharedFooter and 35 or 126
+local footerLeftInset = 22
+local footerControlGap = 10
+local footerMinimapWidth = 200
+local footerLanguageDropdownWidth = 150
+local footerThemeDropdownWidth = 160
+local footerControlYOffset = 7
 
 local standaloneBackdropPath = "Interface\\AddOns\\MerfinPlus\\Media\\options\\merfinplus_backdrop.png"
 local standaloneLogoPath = "Interface\\AddOns\\MerfinPlus\\Media\\options\\merfin_watermark.png"
@@ -46,7 +59,16 @@ local languageFlagPaths = {
   jaJP = "Interface\\AddOns\\MerfinPlus\\Media\\icons\\flags\\flag_jaJP.tga",
 }
 
-local classIconRoot = "Interface\\AddOns\\MerfinPlus\\Media\\assignments\\icons\\Classes\\"
+local languageDropdownIcons = {}
+for localeCode, texturePath in pairs(languageFlagPaths) do
+  languageDropdownIcons[localeCode] = {
+    texture = texturePath,
+    width = localeCode == "enUS" and 22 or 26,
+    height = 18,
+  }
+end
+
+local classIconRoot = "Interface\\AddOns\\MerfinPlus\\Media\\icons\\Classes\\"
 local themeClassIcons = {
   deathknight = { texture = classIconRoot .. "DEATHKNIGHT.tga" },
   demonhunter = { texture = classIconRoot .. "DEMONHUNTER.tga" },
@@ -62,18 +84,30 @@ local themeClassIcons = {
   warrior = { texture = classIconRoot .. "WARRIOR.tga" },
 }
 
+local merfinPlusDropdownLogo = "Interface\\AddOns\\MerfinPlus\\Media\\options\\merfin_watermark.png"
+local themeDropdownIcons = {
+  origin = { texture = merfinPlusDropdownLogo, width = 20, height = 20 },
+  purple = { texture = merfinPlusDropdownLogo, width = 20, height = 20 },
+}
+for themeKey, iconData in pairs(themeClassIcons) do
+  themeDropdownIcons[themeKey] = {
+    texture = iconData.texture,
+    coords = iconData.coords or { 0.07, 0.93, 0.07, 0.93 },
+  }
+end
+
 local optionPanelBackdrop = {
   bgFile = "Interface\\Buttons\\WHITE8X8",
-  edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-  edgeSize = 16,
-  insets = { left = 3.5, right = 3.5, top = 3.5, bottom = 1 },
+  edgeFile = "Interface\\Buttons\\WHITE8X8",
+  edgeSize = 1,
+  insets = { left = 1, right = 1, top = 1, bottom = 1 },
 }
 
 local optionPanelBackdrop2 = {
   bgFile = "Interface\\Buttons\\WHITE8X8",
-  edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-  edgeSize = 12,
-  insets = { left = 3, right = 3, top = 3, bottom = 3 },
+  edgeFile = "Interface\\Buttons\\WHITE8X8",
+  edgeSize = 1,
+  insets = { left = 1, right = 1, top = 1, bottom = 1 },
 }
 
 local function CreateSolidTexture(parent, layer, r, g, b, a)
@@ -221,7 +255,7 @@ local function CreateStandaloneFrameLayout(frame)
   )
   titleText:SetPoint("LEFT", frame.TitleContainer, "LEFT", 0, 0)
   titleText:SetJustifyH("LEFT")
-  titleText:SetText("Merfin " .. ThemeColorEscape(theme.accent) .. "Plus|r")
+  titleText:SetText("Merfin" .. ThemeColorEscape(theme.accent) .. "Plus|r")
   titleText:SetTextColor(1, 1, 1, 1)
   titleText:SetShadowColor(0, 0, 0, 0.9)
   titleText:SetShadowOffset(0, 0)
@@ -247,17 +281,28 @@ local function CreateStandaloneFrameLayout(frame)
   frame.NavContainer:SetPoint("BOTTOMLEFT", contentContainer, "BOTTOMLEFT", navLeftInset, 10)
   frame.NavContainer:SetWidth(navDividerX - navLeftInset)
 
-  frame.NavFooter = CreateFrame("Frame", nil, frame.NavContainer)
-  frame.NavFooter:SetPoint("BOTTOMLEFT", frame.NavContainer, "BOTTOMLEFT", 0, 0)
-  frame.NavFooter:SetPoint("BOTTOMRIGHT", frame.NavContainer, "BOTTOMRIGHT", -navFlareOverflow, 0)
+  frame.NavFooter = CreateFrame("Frame", nil, useCompactSharedFooter and contentContainer or frame.NavContainer)
+  if useCompactSharedFooter then
+    frame.NavFooter:SetPoint("BOTTOMLEFT", contentContainer, "BOTTOMLEFT", 0, 4)
+    frame.NavFooter:SetPoint("BOTTOMRIGHT", contentContainer, "BOTTOMRIGHT", 0, 4)
+  else
+    frame.NavFooter:SetPoint("BOTTOMLEFT", frame.NavContainer, "BOTTOMLEFT", 0, 0)
+    frame.NavFooter:SetPoint("BOTTOMRIGHT", frame.NavContainer, "BOTTOMRIGHT", -navFlareOverflow, 0)
+  end
   frame.NavFooter:SetHeight(navFooterHeight)
-  frame.NavFooter:SetFrameLevel(frame.NavContainer:GetFrameLevel() + 2)
+  frame.NavFooter:SetFrameLevel(frame.NavContainer:GetFrameLevel() + (useCompactSharedFooter and 4 or 2))
 
   -- RIGHT PAGE HOST
   -- AceConfig renders the currently selected options page inside this frame.
   frame.ContentContentContainer = CreateFrame("Frame", nil, frame)
   frame.ContentContentContainer:SetPoint("TOPLEFT", frame, "TOPLEFT", contentLeft, -(contentTop + 16))
-  frame.ContentContentContainer:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -24, 24)
+  frame.ContentContentContainer:SetPoint(
+    "BOTTOMRIGHT",
+    frame,
+    "BOTTOMRIGHT",
+    -24,
+    useCompactSharedFooter and (navFooterHeight + 10) or 24
+  )
 
   -- AceGUI navigation group using the custom vertical navigation layout.
   frame.NavGroup = aceGui:Create("SimpleGroup")
@@ -321,7 +366,7 @@ local function CreateLogoBadge(frame)
   logo:SetAlpha(1)
   logo:SetTexCoord(0, 1, 0, 1)
   logo:SetPoint("CENTER", badge, "CENTER", 0, 0)
-  logo:SetSize(logoBadgeSize * 0.79, logoBadgeSize * 0.79)
+  logo:SetSize(logoTextureSize, logoTextureSize)
 
   local borderGlow = badge:CreateTexture(nil, "ARTWORK", nil, 4)
   borderGlow:SetTexture("Interface\\AddOns\\MerfinPlus\\Media\\icons\\header_logo_border.tga")
@@ -581,7 +626,7 @@ local function RefreshFooterMinimapOption(frame)
   if not button then return end
   button:SetChecked(MerfinPlus:GetMinimapButtonVisibleSetting())
   button.Label:SetText(MerfinPlus:T("Show Minimap Icon"))
-  local row = frame.MinimapIconRow
+  local row = not useCompactSharedFooter and frame.MinimapIconRow
   if row then
     local label = button.Label
     label:SetWidth(0)
@@ -623,27 +668,30 @@ end
 local function RefreshFooterThemeOption(frame)
   local dropdown = frame and frame.ThemeDropdown
   if not dropdown then return end
+  if useCompactSharedFooter and dropdown.SetIcons then dropdown:SetIcons(themeDropdownIcons) end
   dropdown:SetList(MerfinPlus:GetUIThemeChoices(), MerfinPlus:GetUIThemeOrder())
   local themeKey = MerfinPlus:GetUIThemeKey()
   dropdown:SetValue(themeKey)
   local icon = frame.ThemeClassIcon
   local iconData = themeClassIcons[themeKey]
-  dropdown.frame:ClearAllPoints()
-  if icon and iconData then
-    icon:SetTexture(iconData.texture)
-    if iconData.coords then
-      icon:SetTexCoord(unpack(iconData.coords))
+  if not useCompactSharedFooter then
+    dropdown.frame:ClearAllPoints()
+    if icon and iconData then
+      icon:SetTexture(iconData.texture)
+      if iconData.coords then
+        icon:SetTexCoord(unpack(iconData.coords))
+      else
+        icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+      end
+      icon:Show()
     else
-      icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+      if icon then icon:Hide() end
     end
-    icon:Show()
-  else
-    if icon then icon:Hide() end
+    -- Keep the field geometry identical to the language selector. The class
+    -- icon occupies the permanently reserved space instead of resizing it.
+    dropdown.frame:SetPoint("BOTTOMLEFT", frame.NavFooter, "BOTTOMLEFT", 43, 42)
+    dropdown.frame:SetPoint("BOTTOMRIGHT", frame.NavFooter, "BOTTOMRIGHT", -12, 42)
   end
-  -- Keep the field geometry identical to the language selector. The class
-  -- icon occupies the permanently reserved space instead of resizing it.
-  dropdown.frame:SetPoint("BOTTOMLEFT", frame.NavFooter, "BOTTOMLEFT", 43, 42)
-  dropdown.frame:SetPoint("BOTTOMRIGHT", frame.NavFooter, "BOTTOMRIGHT", -12, 42)
   if dropdown.RefreshTheme then dropdown:RefreshTheme() end
   ApplyNativeCheckTheme(frame.MinimapIconOption)
 end
@@ -651,9 +699,14 @@ end
 -- Creates the persistent minimap-icon checkbox at the bottom of the navigation.
 local function CreateFooterMinimapOption(frame)
   local row = CreateFrame("Frame", nil, frame.NavFooter)
-  row:SetPoint("BOTTOMLEFT", frame.NavFooter, "BOTTOMLEFT", 43, 80)
-  row:SetPoint("BOTTOMRIGHT", frame.NavFooter, "BOTTOMRIGHT", -12, 80)
-  row:SetHeight(24)
+  if useCompactSharedFooter then
+    row:SetPoint("LEFT", frame.ThemeDropdown.frame, "RIGHT", footerControlGap, 0)
+    row:SetSize(footerMinimapWidth, 30)
+  else
+    row:SetPoint("BOTTOMLEFT", frame.NavFooter, "BOTTOMLEFT", 43, 80)
+    row:SetPoint("BOTTOMRIGHT", frame.NavFooter, "BOTTOMRIGHT", -12, 80)
+    row:SetHeight(24)
+  end
   frame.MinimapIconRow = row
 
   local button = CreateFrame("CheckButton", nil, row, "UICheckButtonTemplate")
@@ -669,6 +722,7 @@ local function CreateFooterMinimapOption(frame)
     "OUTLINE"
   )
   label:SetPoint("LEFT", button, "RIGHT", 2, 0)
+  if useCompactSharedFooter then label:SetPoint("RIGHT", row, "RIGHT", 0, 0) end
   if label.SetWordWrap then label:SetWordWrap(false) end
   if label.SetNonSpaceWrap then label:SetNonSpaceWrap(false) end
   label:SetJustifyH("LEFT")
@@ -694,19 +748,26 @@ local function CreateFooterThemeOption(frame)
   local dropdown = aceGui:Create("MerfinPlusDropdown")
   dropdown.frame:SetParent(frame.NavFooter)
   dropdown.frame:ClearAllPoints()
-  dropdown.frame:SetPoint("BOTTOMLEFT", frame.NavFooter, "BOTTOMLEFT", 43, 42)
-  dropdown.frame:SetPoint("BOTTOMRIGHT", frame.NavFooter, "BOTTOMRIGHT", -12, 42)
-  dropdown:SetWidth(172)
+  if useCompactSharedFooter then
+    dropdown.frame:SetPoint("LEFT", frame.LanguageDropdown.frame, "RIGHT", footerControlGap, 0)
+    dropdown:SetWidth(footerThemeDropdownWidth)
+  else
+    dropdown.frame:SetPoint("BOTTOMLEFT", frame.NavFooter, "BOTTOMLEFT", 43, 42)
+    dropdown.frame:SetPoint("BOTTOMRIGHT", frame.NavFooter, "BOTTOMRIGHT", -12, 42)
+    dropdown:SetWidth(172)
+  end
   dropdown.matchLanguageFieldFont = true
   dropdown:SetLabel("")
   dropdown:SetCallback("OnValueChanged", function(_, _, value)
     MerfinPlus:SetUITheme(value)
   end)
-  local icon = frame.NavFooter:CreateTexture(nil, "OVERLAY", nil, 7)
-  icon:SetSize(26, 26)
-  icon:SetPoint("CENTER", frame.NavFooter, "BOTTOMLEFT", 26, 56)
-  icon:Hide()
-  frame.ThemeClassIcon = icon
+  if not useCompactSharedFooter then
+    local icon = frame.NavFooter:CreateTexture(nil, "OVERLAY", nil, 7)
+    icon:SetSize(26, 26)
+    icon:SetPoint("CENTER", frame.NavFooter, "BOTTOMLEFT", 26, 56)
+    icon:Hide()
+    frame.ThemeClassIcon = icon
+  end
   frame.ThemeDropdown = dropdown
   RefreshFooterThemeOption(frame)
 end
@@ -726,7 +787,12 @@ local function RefreshLanguageDropdown(frame)
   local dropdown = frame and frame.LanguageDropdown
   if not dropdown then return end
   local localeCode = MerfinPlus:ApplyUILocaleSelectionToDropdown(dropdown)
-  UpdateLanguageFlag(frame, localeCode)
+  if useCompactSharedFooter and dropdown.SetIcons then
+    dropdown:SetIcons(languageDropdownIcons)
+    MerfinPlus:ApplyUILocaleSelectionToDropdown(dropdown)
+  else
+    UpdateLanguageFlag(frame, localeCode)
+  end
   RefreshFooterMinimapOption(frame)
 end
 
@@ -739,19 +805,26 @@ local function CreateLanguageDropdown(frame)
   local dropdown = aceGui:Create("MerfinPlusDropdown")
   dropdown.frame:SetParent(frame.NavFooter)
   dropdown.frame:ClearAllPoints()
-  dropdown.frame:SetPoint("BOTTOMLEFT", frame.NavFooter, "BOTTOMLEFT", 43, 4)
-  dropdown.frame:SetPoint("BOTTOMRIGHT", frame.NavFooter, "BOTTOMRIGHT", -12, 4)
-  dropdown:SetWidth(172)
+  if useCompactSharedFooter then
+    dropdown.frame:SetPoint("LEFT", frame.NavFooter, "LEFT", footerLeftInset, footerControlYOffset)
+    dropdown:SetWidth(footerLanguageDropdownWidth)
+  else
+    dropdown.frame:SetPoint("BOTTOMLEFT", frame.NavFooter, "BOTTOMLEFT", 43, 4)
+    dropdown.frame:SetPoint("BOTTOMRIGHT", frame.NavFooter, "BOTTOMRIGHT", -12, 4)
+    dropdown:SetWidth(172)
+  end
   dropdown:SetLabel("")
   dropdown:SetCallback("OnValueChanged", function(_, _, value)
     MerfinPlus:SetUILocale(value)
     RefreshLanguageDropdown(frame)
   end)
 
-  local flag = frame.NavFooter:CreateTexture(nil, "OVERLAY", nil, 7)
-  flag:SetSize(30, 22)
-  flag:SetPoint("RIGHT", dropdown.frame, "LEFT", -3, 0)
-  frame.LanguageFlag = flag
+  if not useCompactSharedFooter then
+    local flag = frame.NavFooter:CreateTexture(nil, "OVERLAY", nil, 7)
+    flag:SetSize(30, 22)
+    flag:SetPoint("RIGHT", dropdown.frame, "LEFT", -3, 0)
+    frame.LanguageFlag = flag
+  end
   frame.LanguageDropdown = dropdown
   RefreshLanguageDropdown(frame)
   frame:HookScript("OnShow", function()
@@ -850,9 +923,9 @@ local function CreateStandaloneFrame()
   frame:SetResizable(true)
 
   if frame.SetResizeBounds then
-    frame:SetResizeBounds(760, 520)
+    frame:SetResizeBounds(minimumFrameWidth, minimumFrameHeight)
   elseif frame.SetMinResize then
-    frame:SetMinResize(760, 520)
+    frame:SetMinResize(minimumFrameWidth, minimumFrameHeight)
   end
 
   CreateStandaloneFrameLayout(frame)
@@ -943,7 +1016,7 @@ local function ApplyStandaloneSectionBranding(frame, section)
   if frame.TitleText then
     frame.TitleText:SetText(
       branding and branding.title
-      or ("Merfin " .. ThemeColorEscape(theme.accent) .. "Plus|r")
+      or ("Merfin" .. ThemeColorEscape(theme.accent) .. "Plus|r")
     )
   end
   if frame.LogoTexture then
@@ -1108,6 +1181,7 @@ end
 -- Remove AceGUI's opaque group inset fills inside the standalone window.
 -- Their borders remain visible while our shared panel texture shows through.
 local ApplyStandaloneInsetBackdrops
+local SkinStandaloneTreeButtons
 
 local function ScheduleStandaloneInsetRefresh(root)
   if not root or root.merfinPlusInsetRefreshScheduled then
@@ -1139,7 +1213,10 @@ local function GuardStandaloneInsetRoot(root)
     local result = AddChild(self, ...)
     -- Apply the no-scrollbar skin before returning control to AceConfig. This
     -- keeps the freshly created ScrollFrame from rendering one gold frame.
-    if child then ApplyStandaloneInsetBackdrops(child, self) end
+    if child then
+      ApplyStandaloneInsetBackdrops(child, self)
+      if child.frame then MerfinPlus:ApplyUIFontSizeDelta(child.frame) end
+    end
     ScheduleStandaloneInsetRefresh(self)
     return result
   end
@@ -1162,6 +1239,13 @@ end
 local function IsStandaloneSection(widget, sectionKey)
   local path = GetStandaloneWidgetPath(widget)
   return path and path[1] == sectionKey or false
+end
+
+local function IsStandalonePathValue(widget, value)
+  for _, pathValue in ipairs(GetStandaloneWidgetPath(widget) or {}) do
+    if pathValue == value then return true end
+  end
+  return false
 end
 
 local function IsRaidSettingsCooldownRaidContainer(widget)
@@ -1209,10 +1293,10 @@ local function MakeStandaloneInsetTransparent(widget, frame, showBorder)
   end
   frame:SetBackdropColor(theme.canvas[1], theme.canvas[2], theme.canvas[3], 0)
   frame:SetBackdropBorderColor(
-    theme.accent[1],
-    theme.accent[2],
-    theme.accent[3],
-    showBorder == false and 0 or 0.58
+    theme.borderSoft[1],
+    theme.borderSoft[2],
+    theme.borderSoft[3],
+    showBorder == false and 0 or 0.72
   )
 end
 
@@ -1273,6 +1357,15 @@ local function GuardStandaloneInsetWidget(widget, root)
       fontString:SetTextColor(color[1], color[2], color[3], color[4])
     end
     self.merfinPlusOriginalTextColors = nil
+    for fontString, layout in pairs(self.merfinPlusOriginalTabTextLayouts or {}) do
+      fontString:ClearAllPoints()
+      for _, point in ipairs(layout.points) do
+        fontString:SetPoint(point[1], point[2], point[3], point[4], point[5])
+      end
+      fontString:SetJustifyH(layout.justifyH)
+      fontString:SetJustifyV(layout.justifyV)
+    end
+    self.merfinPlusOriginalTabTextLayouts = nil
     for texture, color in pairs(self.merfinPlusOriginalVertexColors or {}) do
       if texture.SetDesaturated then texture:SetDesaturated(false) end
       texture:SetVertexColor(color[1], color[2], color[3], color[4])
@@ -1307,10 +1400,24 @@ local function GuardStandaloneInsetWidget(widget, root)
       tab.merfinPlusThemeOwner = nil
       tab.merfinPlusThemeHovered = nil
     end
+    for _, button in ipairs(self.buttons or {}) do
+      if button.merfinPlusTreeBackground then button.merfinPlusTreeBackground:Hide() end
+      if button.merfinPlusTreeIndicator then button.merfinPlusTreeIndicator:Hide() end
+      if button.merfinPlusOriginalTreeHeight then
+        button:SetHeight(button.merfinPlusOriginalTreeHeight)
+        button.merfinPlusOriginalTreeHeight = nil
+      end
+      button.merfinPlusTreeOwner = nil
+      button.merfinPlusTreeHovered = nil
+    end
 
     if self.merfinPlusOriginalBuildTabs then
       self.BuildTabs = self.merfinPlusOriginalBuildTabs
       self.merfinPlusOriginalBuildTabs = nil
+    end
+    if self.merfinPlusOriginalRefreshTree then
+      self.RefreshTree = self.merfinPlusOriginalRefreshTree
+      self.merfinPlusOriginalRefreshTree = nil
     end
     if self.merfinPlusOriginalInsetFire then
       self.Fire = self.merfinPlusOriginalInsetFire
@@ -1343,6 +1450,19 @@ local function GuardStandaloneInsetWidget(widget, root)
     end
   end
 
+  if widget.type == "TreeGroup" and widget.RefreshTree and not widget.merfinPlusOriginalRefreshTree then
+    local RefreshTree = widget.RefreshTree
+    widget.merfinPlusOriginalRefreshTree = RefreshTree
+    widget.RefreshTree = function(self, ...)
+      local result = RefreshTree(self, ...)
+      -- AceGUI resets the tree button colors during every options refresh.
+      -- Reapply the theme in the same call so the navigation never renders
+      -- one frame with its native style after a checkbox or dropdown change.
+      SkinStandaloneTreeButtons(self)
+      return result
+    end
+  end
+
   if widget.AddChild and not widget.merfinPlusOriginalInsetAddChild then
     local AddChild = widget.AddChild
     widget.merfinPlusOriginalInsetAddChild = AddChild
@@ -1352,6 +1472,7 @@ local function GuardStandaloneInsetWidget(widget, root)
       if child then
         child.merfinPlusInsetParent = self
         ApplyStandaloneInsetBackdrops(child, root)
+        if child.frame then MerfinPlus:ApplyUIFontSizeDelta(child.frame) end
         ScheduleStandaloneInsetRefresh(root)
       end
       return result
@@ -1376,6 +1497,26 @@ local function GetStandaloneTabTextures(tab)
     tab.LeftDisabled, tab.MiddleDisabled, tab.RightDisabled,
     tab.HighlightTexture,
   }
+end
+
+local function CenterStandaloneTabText(widget, tab, text)
+  if not widget or not tab or not text then return end
+  widget.merfinPlusOriginalTabTextLayouts = widget.merfinPlusOriginalTabTextLayouts or {}
+  if not widget.merfinPlusOriginalTabTextLayouts[text] then
+    local points = {}
+    for index = 1, text:GetNumPoints() do
+      points[index] = { text:GetPoint(index) }
+    end
+    widget.merfinPlusOriginalTabTextLayouts[text] = {
+      points = points,
+      justifyH = text:GetJustifyH(),
+      justifyV = text:GetJustifyV(),
+    }
+  end
+  text:ClearAllPoints()
+  text:SetPoint("CENTER", tab, "CENTER", 0, 1)
+  text:SetJustifyH("CENTER")
+  text:SetJustifyV("MIDDLE")
 end
 
 local function SuppressStandaloneNativeTab(tab, widget)
@@ -1410,18 +1551,18 @@ local function RefreshStandaloneFlatTab(tab)
   if not tab then return end
   if not tab.merfinPlusThemeBackground then
     local background = tab:CreateTexture(nil, "BACKGROUND", nil, -1)
-    background:SetPoint("TOPLEFT", tab, "TOPLEFT", 7, -2)
-    background:SetPoint("BOTTOMRIGHT", tab, "BOTTOMRIGHT", -7, 2)
+    background:SetPoint("TOPLEFT", tab, "TOPLEFT", 7, -1)
+    background:SetPoint("BOTTOMRIGHT", tab, "BOTTOMRIGHT", -7, 1)
     tab.merfinPlusThemeBackground = background
 
     local top = tab:CreateTexture(nil, "ARTWORK", nil, 6)
-    top:SetPoint("TOPLEFT", tab, "TOPLEFT", 7, -2)
-    top:SetPoint("TOPRIGHT", tab, "TOPRIGHT", -7, -2)
+    top:SetPoint("TOPLEFT", tab, "TOPLEFT", 7, -1)
+    top:SetPoint("TOPRIGHT", tab, "TOPRIGHT", -7, -1)
     top:SetHeight(1)
     local bottom = tab:CreateTexture(nil, "ARTWORK", nil, 6)
-    bottom:SetPoint("BOTTOMLEFT", tab, "BOTTOMLEFT", 7, 1)
-    bottom:SetPoint("BOTTOMRIGHT", tab, "BOTTOMRIGHT", -7, 1)
-    bottom:SetHeight(1)
+    bottom:SetPoint("BOTTOMLEFT", tab, "BOTTOMLEFT", 7, 0)
+    bottom:SetPoint("BOTTOMRIGHT", tab, "BOTTOMRIGHT", -7, 0)
+    bottom:SetHeight(2)
     local left = tab:CreateTexture(nil, "ARTWORK", nil, 6)
     left:SetPoint("TOPLEFT", tab, "TOPLEFT", 7, -2)
     left:SetPoint("BOTTOMLEFT", tab, "BOTTOMLEFT", 7, 1)
@@ -1436,18 +1577,35 @@ local function RefreshStandaloneFlatTab(tab)
   local active = tab.selected == true
   local hovered = tab.merfinPlusThemeHovered == true
   local background = active and theme.selected or (hovered and theme.hover or theme.surface)
-  local border = active and theme.accent or (hovered and theme.accentSoft or theme.borderSoft)
   tab.merfinPlusThemeBackground:SetColorTexture(
     background[1],
     background[2],
     background[3],
-    active and math.min(background[4] or 0.28, 0.32) or (hovered and 0.18 or 0.70)
+    active and 0.20 or (hovered and 0.10 or 0.025)
   )
-  for _, texture in ipairs(tab.merfinPlusThemeBorders or {}) do
-    texture:SetColorTexture(border[1], border[2], border[3], active and 0.72 or (hovered and 0.48 or 0.22))
-    texture:Show()
+  for index, texture in ipairs(tab.merfinPlusThemeBorders or {}) do
+    if index == 2 then
+      texture:SetColorTexture(
+        theme.accent[1],
+        theme.accent[2],
+        theme.accent[3],
+        active and 0.95 or (hovered and 0.34 or 0)
+      )
+      if active or hovered then texture:Show() else texture:Hide() end
+    else
+      texture:Hide()
+    end
   end
+
   tab.merfinPlusThemeBackground:Show()
+
+  local text = tab.Text or tab:GetFontString()
+  if text then
+    -- Blizzard's native tab template offsets labels downward. The custom flat
+    -- navigation surface needs the label centered within the whole tab.
+    CenterStandaloneTabText(tab.merfinPlusThemeOwner, tab, text)
+    SetStandaloneTextColor(tab.merfinPlusThemeOwner, text, active and theme.accentBright or theme.text)
+  end
 
   if not tab.merfinPlusThemeHooked then
     tab:HookScript("OnEnter", function(self)
@@ -1499,8 +1657,194 @@ local function SkinStandaloneTabs(widget)
     SuppressStandaloneNativeTab(tab, widget)
     RefreshStandaloneFlatTab(tab)
     local text = tab.Text or tab:GetFontString()
-    if text then SetStandaloneTextColor(widget, text, theme.text) end
+    if text then
+      CenterStandaloneTabText(widget, tab, text)
+      SetStandaloneTextColor(widget, text, tab.selected and theme.accentBright or theme.text)
+    end
   end
+end
+
+local function RefreshStandaloneTreeButton(button)
+  local widget = button and button.merfinPlusTreeOwner
+  if not widget or not IsStandaloneSection(widget, "plugin:MerfinUI") then return end
+  if not button.merfinPlusOriginalTreeHeight then
+    button.merfinPlusOriginalTreeHeight = button:GetHeight()
+  end
+  button:SetHeight(28)
+  if button.SetPushedTextOffset then
+    button:SetPushedTextOffset(0, 0)
+  end
+  if not button.merfinPlusTreeBackground then
+    local background = button:CreateTexture(nil, "BACKGROUND", nil, -1)
+    background:SetAllPoints(button)
+    button.merfinPlusTreeBackground = background
+
+    local indicator = button:CreateTexture(nil, "ARTWORK", nil, 4)
+    indicator:SetPoint("TOPLEFT", button, "TOPLEFT", 0, -4)
+    indicator:SetPoint("BOTTOMLEFT", button, "BOTTOMLEFT", 0, 4)
+    indicator:SetWidth(2)
+    button.merfinPlusTreeIndicator = indicator
+  end
+
+  local selected = button.selected == true
+  local hovered = button.merfinPlusTreeHovered == true
+  local background = selected and theme.selected or (hovered and theme.hover or theme.surface)
+  button.merfinPlusTreeBackground:SetColorTexture(
+    background[1], background[2], background[3], selected and 0.56 or (hovered and 0.28 or 0)
+  )
+  button.merfinPlusTreeBackground:Show()
+  button.merfinPlusTreeIndicator:SetColorTexture(theme.accent[1], theme.accent[2], theme.accent[3], 1)
+  if selected then button.merfinPlusTreeIndicator:Show() else button.merfinPlusTreeIndicator:Hide() end
+  SetStandaloneTextColor(widget, button.text, selected and theme.accentBright or (hovered and theme.text or theme.muted))
+
+  local highlight = button.GetHighlightTexture and button:GetHighlightTexture()
+  if highlight then
+    widget.merfinPlusOriginalTextureAlphas = widget.merfinPlusOriginalTextureAlphas or {}
+    if widget.merfinPlusOriginalTextureAlphas[highlight] == nil then
+      widget.merfinPlusOriginalTextureAlphas[highlight] = highlight:GetAlpha()
+    end
+    highlight:SetAlpha(0)
+  end
+
+  if not button.merfinPlusTreeHooked then
+    button:HookScript("OnEnter", function(self)
+      self.merfinPlusTreeHovered = true
+      RefreshStandaloneTreeButton(self)
+    end)
+    button:HookScript("OnLeave", function(self)
+      self.merfinPlusTreeHovered = nil
+      RefreshStandaloneTreeButton(self)
+    end)
+    button.merfinPlusTreeHooked = true
+  end
+end
+
+SkinStandaloneTreeButtons = function(widget)
+  for _, button in ipairs(widget.buttons or {}) do
+    button.merfinPlusTreeOwner = widget
+    RefreshStandaloneTreeButton(button)
+  end
+end
+
+local function ColorTexture(texture, color, alpha)
+  if texture then
+    texture:SetColorTexture(color[1], color[2], color[3], alpha or color[4] or 1)
+  end
+end
+
+local function CreateControlSurface(control, prefix, trackHeight)
+  if not control or control[prefix .. "Background"] then return end
+  local background = control:CreateTexture(nil, "BACKGROUND")
+  if trackHeight then
+    background:SetPoint("LEFT", control, "LEFT", 1, 0)
+    background:SetPoint("RIGHT", control, "RIGHT", -1, 0)
+    background:SetHeight(trackHeight)
+  else
+    background:SetPoint("TOPLEFT", control, "TOPLEFT", 0, 0)
+    background:SetPoint("BOTTOMRIGHT", control, "BOTTOMRIGHT", 0, 0)
+  end
+  control[prefix .. "Background"] = background
+
+  local top = control:CreateTexture(nil, "ARTWORK")
+  local bottom = control:CreateTexture(nil, "ARTWORK")
+  local left = control:CreateTexture(nil, "ARTWORK")
+  local right = control:CreateTexture(nil, "ARTWORK")
+  if trackHeight then
+    top:SetPoint("BOTTOMLEFT", background, "TOPLEFT", 0, 0)
+    top:SetPoint("BOTTOMRIGHT", background, "TOPRIGHT", 0, 0)
+    bottom:SetPoint("TOPLEFT", background, "BOTTOMLEFT", 0, 0)
+    bottom:SetPoint("TOPRIGHT", background, "BOTTOMRIGHT", 0, 0)
+  else
+    top:SetPoint("TOPLEFT", control, "TOPLEFT", 0, 0)
+    top:SetPoint("TOPRIGHT", control, "TOPRIGHT", 0, 0)
+    bottom:SetPoint("BOTTOMLEFT", control, "BOTTOMLEFT", 0, 0)
+    bottom:SetPoint("BOTTOMRIGHT", control, "BOTTOMRIGHT", 0, 0)
+  end
+  top:SetHeight(1)
+  bottom:SetHeight(1)
+  left:SetPoint("TOPLEFT", top, "BOTTOMLEFT", 0, 0)
+  left:SetPoint("BOTTOMLEFT", bottom, "TOPLEFT", 0, 0)
+  right:SetPoint("TOPRIGHT", top, "BOTTOMRIGHT", 0, 0)
+  right:SetPoint("BOTTOMRIGHT", bottom, "TOPRIGHT", 0, 0)
+  left:SetWidth(1)
+  right:SetWidth(1)
+  control[prefix .. "Borders"] = { top, bottom, left, right }
+end
+
+local function RefreshInputStyle(editbox)
+  if not editbox or not editbox.merfinPlusInputBackground then return end
+  ColorTexture(editbox.merfinPlusInputBackground, theme.surface, 0.94)
+  local border = (editbox.merfinPlusInputFocused or editbox.merfinPlusInputHovered) and theme.accentSoft or theme.borderSoft
+  local alpha = editbox.merfinPlusInputFocused and 1 or (editbox.merfinPlusInputHovered and 0.82 or 0.68)
+  for _, texture in ipairs(editbox.merfinPlusInputBorders or {}) do ColorTexture(texture, border, alpha) end
+  if editbox.SetTextColor then editbox:SetTextColor(theme.text[1], theme.text[2], theme.text[3], 1) end
+end
+
+local function SkinStandaloneInput(widget, editbox)
+  if not editbox then return end
+  local nativeTextures = {}
+  local function AddNativeTexture(texture)
+    if texture then nativeTextures[#nativeTextures + 1] = texture end
+  end
+  AddNativeTexture(editbox.Left)
+  AddNativeTexture(editbox.Middle)
+  AddNativeTexture(editbox.Right)
+  AddNativeTexture(editbox.left)
+  AddNativeTexture(editbox.middle)
+  AddNativeTexture(editbox.right)
+  local name = editbox.GetName and editbox:GetName()
+  if name then
+    AddNativeTexture(_G[name .. "Left"])
+    AddNativeTexture(_G[name .. "Middle"])
+    AddNativeTexture(_G[name .. "Right"])
+    AddNativeTexture(_G[name .. "Mid"])
+  end
+  for _, texture in ipairs(nativeTextures) do
+    if texture and texture.SetAlpha then
+      widget.merfinPlusOriginalTextureAlphas = widget.merfinPlusOriginalTextureAlphas or {}
+      if widget.merfinPlusOriginalTextureAlphas[texture] == nil then
+        widget.merfinPlusOriginalTextureAlphas[texture] = texture:GetAlpha()
+      end
+      texture:SetAlpha(0)
+    end
+  end
+  CreateControlSurface(editbox, "merfinPlusInput")
+  if not editbox.merfinPlusInputHooked then
+    editbox:HookScript("OnEnter", function(self) self.merfinPlusInputHovered = true; RefreshInputStyle(self) end)
+    editbox:HookScript("OnLeave", function(self) self.merfinPlusInputHovered = nil; RefreshInputStyle(self) end)
+    editbox:HookScript("OnEditFocusGained", function(self) self.merfinPlusInputFocused = true; RefreshInputStyle(self) end)
+    editbox:HookScript("OnEditFocusLost", function(self) self.merfinPlusInputFocused = nil; RefreshInputStyle(self) end)
+    editbox.merfinPlusInputHooked = true
+  end
+  RefreshInputStyle(editbox)
+end
+
+local function RefreshSliderStyle(slider)
+  if not slider or not slider.merfinPlusSliderBackground then return end
+  ColorTexture(slider.merfinPlusSliderBackground, theme.surface, 0.94)
+  local border = slider.merfinPlusSliderHovered and theme.accentSoft or theme.borderSoft
+  for _, texture in ipairs(slider.merfinPlusSliderBorders or {}) do
+    ColorTexture(texture, border, slider.merfinPlusSliderHovered and 0.90 or 0.72)
+  end
+  local thumb = slider:GetThumbTexture()
+  if thumb then
+    thumb:SetTexture("Interface\\Buttons\\WHITE8X8")
+    thumb:SetSize(8, 16)
+    thumb:SetVertexColor(theme.accent[1], theme.accent[2], theme.accent[3], 1)
+  end
+end
+
+local function SkinStandaloneSlider(widget)
+  local slider = widget and widget.slider
+  if not slider then return end
+  CreateControlSurface(slider, "merfinPlusSlider", 6)
+  if not slider.merfinPlusSliderHooked then
+    slider:HookScript("OnEnter", function(self) self.merfinPlusSliderHovered = true; RefreshSliderStyle(self) end)
+    slider:HookScript("OnLeave", function(self) self.merfinPlusSliderHovered = nil; RefreshSliderStyle(self) end)
+    slider.merfinPlusSliderHooked = true
+  end
+  RefreshSliderStyle(slider)
+  SkinStandaloneInput(widget, widget.editbox or widget.editBox)
 end
 
 ApplyStandaloneInsetBackdrops = function(widget, root)
@@ -1518,18 +1862,69 @@ ApplyStandaloneInsetBackdrops = function(widget, root)
     GuardStandaloneInsetWidget(widget, root)
   elseif widget.type == "Heading" then
     SetStandaloneTextColor(widget, widget.label, theme.accentBright)
-    SetStandaloneVertexColor(widget, widget.left, theme.accent, IsStandaloneSection(widget, "plugin:MerfinUI") and 0 or 0.62)
-    SetStandaloneVertexColor(widget, widget.right, theme.accent, IsStandaloneSection(widget, "plugin:MerfinUI") and 0 or 0.62)
+    SetStandaloneVertexColor(widget, widget.left, theme.accent, IsStandaloneSection(widget, "plugin:MerfinUI") and 0.32 or 0.62)
+    SetStandaloneVertexColor(widget, widget.right, theme.accent, IsStandaloneSection(widget, "plugin:MerfinUI") and 0.32 or 0.62)
     GuardStandaloneInsetWidget(widget, root)
   elseif widget.type == "CheckBox" or widget.type == "MerfinPlusNpcToggle" then
-    SetStandaloneVertexColor(widget, widget.checkbg, theme.muted, 0.90)
+    if widget.frame and widget.frame.SetPushedTextOffset then
+      widget.frame:SetPushedTextOffset(0, 0)
+    end
+    if widget.checkbg then
+      widget.merfinPlusOriginalTabTextureSources = widget.merfinPlusOriginalTabTextureSources or {}
+      if widget.merfinPlusOriginalTabTextureSources[widget.checkbg] == nil then
+        widget.merfinPlusOriginalTabTextureSources[widget.checkbg] = widget.checkbg:GetTexture() or false
+      end
+      widget.checkbg:SetTexture("Interface\\Buttons\\WHITE8X8")
+      widget.checkbg:ClearAllPoints()
+      widget.checkbg:SetSize(18, 18)
+      widget.checkbg:SetPoint("LEFT", widget.frame, "LEFT", 1, 0)
+    end
+    if widget.check then
+      widget.check:SetTexture("Interface\\Buttons\\WHITE8X8")
+      widget.check:ClearAllPoints()
+      widget.check:SetSize(10, 10)
+      widget.check:SetPoint("CENTER", widget.checkbg, "CENTER", 0, 0)
+    end
+    if widget.highlight then
+      widget.highlight:SetTexture("Interface\\Buttons\\WHITE8X8")
+      widget.highlight:ClearAllPoints()
+      widget.highlight:SetAllPoints(widget.checkbg)
+    end
+    if widget.text then
+      local function RestoreCheckboxTextPosition()
+        widget.text:ClearAllPoints()
+        widget.text:SetPoint("LEFT", widget.checkbg, "RIGHT", 8, 0)
+        widget.text:SetPoint("RIGHT", widget.frame, "RIGHT", -2, 0)
+        widget.text:SetJustifyV("MIDDLE")
+      end
+      RestoreCheckboxTextPosition()
+      widget.merfinPlusRestoreCheckboxTextPosition = RestoreCheckboxTextPosition
+      if widget.frame and not widget.merfinPlusCheckboxPositionHooked then
+        widget.frame:HookScript("OnMouseDown", function(frame)
+          local owner = frame.obj
+          if owner and owner.merfinPlusRestoreCheckboxTextPosition then
+            owner.merfinPlusRestoreCheckboxTextPosition()
+          end
+        end)
+        widget.frame:HookScript("OnMouseUp", function(frame)
+          local owner = frame.obj
+          if owner and owner.merfinPlusRestoreCheckboxTextPosition then
+            owner.merfinPlusRestoreCheckboxTextPosition()
+          end
+        end)
+        widget.merfinPlusCheckboxPositionHooked = true
+      end
+    end
+    SetStandaloneVertexColor(widget, widget.checkbg, theme.surfaceRaised, 1)
     SetStandaloneVertexColor(widget, widget.check, theme.accentBright, 1)
-    SetStandaloneVertexColor(widget, widget.highlight, theme.accent, 0.85)
+    SetStandaloneVertexColor(widget, widget.highlight, theme.accent, 0.28)
     SetStandaloneTextColor(widget, widget.text, theme.text)
     GuardStandaloneInsetWidget(widget, root)
   elseif widget.type == "Slider" then
     SetStandaloneTextColor(widget, widget.label, theme.accentBright)
-    SetStandaloneVertexColor(widget, widget.slider and widget.slider:GetThumbTexture(), theme.accent, 1)
+    SetStandaloneTextColor(widget, widget.lowtext, theme.muted)
+    SetStandaloneTextColor(widget, widget.hightext, theme.muted)
+    SkinStandaloneSlider(widget)
     GuardStandaloneInsetWidget(widget, root)
   elseif widget.type == "ScrollFrame" then
     HideStandaloneScrollbar(widget, widget.scrollbar)
@@ -1546,20 +1941,49 @@ ApplyStandaloneInsetBackdrops = function(widget, root)
     SetStandaloneTextColor(widget, widget.text, theme.text)
   elseif widget.type == "EditBox" or widget.type == "MultiLineEditBox" then
     SetStandaloneTextColor(widget, widget.label, theme.accentBright)
+    SkinStandaloneInput(widget, widget.editbox or widget.editBox)
   elseif widget.type == "MerfinPlusIconButton" then
     SetStandaloneVertexColor(widget, widget.image, theme.accentBright, 1)
   elseif widget.type == "InlineGroup" then
     SetStandaloneTextColor(widget, widget.titletext, theme.accentBright)
-    local hideBorder = IsStandaloneSection(widget, "assignments")
-      or IsStandaloneSection(widget, "raidCooldowns")
-      or IsStandaloneSection(widget, "plugin:MerfinUI")
+    local isAddOnCard = IsStandaloneSection(widget, "plugin:MerfinUI")
+      and (IsStandalonePathValue(widget, "qolAddOns") or IsStandalonePathValue(widget, "raidAddOns"))
+    local hideBorder = IsStandaloneSection(widget, "raidCooldowns")
+      or (IsStandaloneSection(widget, "plugin:MerfinUI") and not isAddOnCard)
     MakeStandaloneInsetTransparent(widget, widget.content and widget.content:GetParent(), not hideBorder)
+    if isAddOnCard then
+      local card = widget.content and widget.content:GetParent()
+      if card and card.SetBackdropColor then
+        card:SetBackdropColor(theme.surface[1], theme.surface[2], theme.surface[3], 0.46)
+        card:SetBackdropBorderColor(theme.borderSoft[1], theme.borderSoft[2], theme.borderSoft[3], 0.82)
+      end
+      if widget.merfinPlusSectionDivider then
+        widget.merfinPlusSectionDivider:Hide()
+        if widget.merfinPlusSectionAccent then widget.merfinPlusSectionAccent:Hide() end
+      end
+    elseif IsStandaloneSection(widget, "plugin:MerfinUI") then
+      if not widget.merfinPlusSectionDivider then
+        local divider = widget.frame:CreateTexture(nil, "ARTWORK")
+        divider:SetPoint("BOTTOMLEFT", widget.frame, "BOTTOMLEFT", 14, 2)
+        divider:SetPoint("BOTTOMRIGHT", widget.frame, "BOTTOMRIGHT", -14, 2)
+        divider:SetHeight(1)
+        widget.merfinPlusSectionDivider = divider
+
+      end
+      widget.merfinPlusSectionDivider:SetColorTexture(theme.borderSoft[1], theme.borderSoft[2], theme.borderSoft[3], 0.46)
+      widget.merfinPlusSectionDivider:Show()
+      if widget.merfinPlusSectionAccent then widget.merfinPlusSectionAccent:Hide() end
+    elseif widget.merfinPlusSectionDivider then
+      widget.merfinPlusSectionDivider:Hide()
+      if widget.merfinPlusSectionAccent then widget.merfinPlusSectionAccent:Hide() end
+    end
     GuardStandaloneInsetWidget(widget, root)
   elseif widget.type == "TreeGroup" then
     local hideBorder = IsRaidSettingsCooldownRaidContainer(widget)
       or IsStandaloneSection(widget, "plugin:MerfinUI")
     MakeStandaloneInsetTransparent(widget, widget.treeframe, not hideBorder)
     MakeStandaloneInsetTransparent(widget, widget.border, not hideBorder)
+    SkinStandaloneTreeButtons(widget)
     WidenRaidCooldownBossTree(widget)
     GuardStandaloneInsetWidget(widget, root)
   elseif widget.type == "DropdownGroup" then
@@ -1582,17 +2006,13 @@ function MerfinPlus:SetupOptions()
   local mediaOptions = capabilities.mediaOptions and self:BuildMediaOptions() or nil
   local raidPack = capabilities.raidPackOptions and self:BuildRaidPackOptions() or nil
   local wowSimOptions = capabilities.wowSimOptions and self:BuildWoWSimOptions() or nil
-  local exportOptions = capabilities.export and self:BuildExportOptions() or nil
-  local assignmentsOptions = capabilities.assignmentsOptions and self:BuildAssignmentsOptions() or nil
+
+
   local raidCooldownOptions = capabilities.raidCooldowns
     and self:BuildRaidCooldownTrackerOptions()
     or nil
 
-  if assignmentsOptions and exportOptions then
-    exportOptions.name = self:T("Loot / Roster Export")
-    exportOptions.order = 40
-    assignmentsOptions.args.rosterExport = exportOptions
-  end
+
 
   local mainOptions = {
     type = "group",
@@ -1676,7 +2096,7 @@ function MerfinPlus:SetupOptions()
     self:LocalizeOptionTree(wowSimOptions)
     self:LocalizeOptionTree(raidPack)
     self:LocalizeOptionTree(profilesOptions)
-    self:LocalizeOptionTree(assignmentsOptions)
+
     self:LocalizeOptionTree(raidCooldownOptions)
   end
 
@@ -1686,7 +2106,7 @@ function MerfinPlus:SetupOptions()
     MerfinPlus_WoWSim = wowSimOptions,
     MerfinPlus_RaidPack = raidPack,
     MerfinPlus_Profiles = profilesOptions,
-    MerfinPlus_Assignments = assignmentsOptions,
+
     MerfinPlus_RaidCooldowns = raidCooldownOptions,
   }
   local localizationSchemaValid, localizationSchemaError = true
@@ -1704,7 +2124,7 @@ function MerfinPlus:SetupOptions()
     ApplyMerfinPlusDropdowns(wowSimOptions)
     ApplyMerfinPlusDropdowns(raidPack)
     ApplyMerfinPlusDropdowns(profilesOptions)
-    ApplyMerfinPlusDropdowns(assignmentsOptions)
+
     ApplyMerfinPlusDropdowns(raidCooldownOptions)
   end
 
@@ -1730,10 +2150,7 @@ function MerfinPlus:SetupOptions()
   aceConfigRegistry:RegisterOptionsTable("MerfinPlus_Profiles", profilesOptions)
   aceConfigDialog:AddToBlizOptions("MerfinPlus_Profiles", "Profiles", "MerfinPlus v" .. version)
 
-  if assignmentsOptions then
-    aceConfigRegistry:RegisterOptionsTable("MerfinPlus_Assignments", assignmentsOptions)
-    aceConfigDialog:AddToBlizOptions("MerfinPlus_Assignments", "Assignments", "MerfinPlus v" .. version)
-  end
+
 
   -- ==== Standalone window (own AceConfigDialog frame) ====
   -- IMPORTANT: include whole profilesOptions object, not just .args, to keep its handler intact.
@@ -1759,17 +2176,7 @@ function MerfinPlus:SetupOptions()
     })
   end
 
-  if assignmentsOptions then
-    table.insert(optionSections, {
-      key = "assignments",
-      labelKey = "Assignments",
-      label = self:T("Assignments"),
-      icon = "Interface\\AddOns\\MerfinPlus\\Media\\icons\\nav_assignments.tga",
-      aliases = { "assignments", "assignment", "assigns" },
-      options = assignmentsOptions,
-      order = 30,
-    })
-  end
+
 
   if raidCooldownOptions then
     table.insert(optionSections, {
@@ -1939,7 +2346,7 @@ function MerfinPlus:SetupOptions()
   end
 
   aceConfigRegistry:RegisterOptionsTable(standaloneOptionsName, standaloneOptions)
-  aceConfigDialog:SetDefaultSize(standaloneOptionsName, 1000, 680)
+  aceConfigDialog:SetDefaultSize(standaloneOptionsName, compactWindow and 860 or 1000, compactWindow and 590 or 680)
 
   local defaultSectionKey
   for _, section in ipairs(optionSections) do
@@ -1949,217 +2356,28 @@ function MerfinPlus:SetupOptions()
     end
   end
 
-  local validAssignmentTabs = {
-    raid = true,
-    gurtogg = true,
-    preboss = true,
-    settings = true,
-    rosterExport = true,
-  }
+
   local validRaidCooldownTabs = {
     general = true,
     activation = true,
   }
 
   local function GetStoredViewState()
-    local storage
-    if capabilities.assignmentsOptions and type(MerfinPlus.GetRaidAssignmentStorage) == "function" then
-      storage = MerfinPlus:GetRaidAssignmentStorage()
-    else
-      local db = MerfinPlus.db
-      storage = db and db.global and db.global.assignments
-      if type(storage) ~= "table" then
-        return {}
-      end
+    local global = MerfinPlus.db.global
+    if type(global.optionsViewState) ~= "table" then
+      local old = global.assignments and global.assignments.viewState or {}
+      global.optionsViewState = { activeMainNav = old.activeMainNav, activeRaidCooldownsTab = old.activeRaidCooldownsTab }
     end
-    storage.viewState = storage.viewState or {}
-    return storage.viewState
+    return global.optionsViewState
   end
 
-  local assignmentTabLayouts = {
-    [3] = {
-      requiredWidth = 0,
-      fixedWidth = true,
-      { value = "raid", width = 145 },
-      { value = "gurtogg", width = 205 },
-      { value = "settings", width = 130 },
-    },
-    [4] = {
-      requiredWidth = 605,
-      { value = "raid", width = 145 },
-      { value = "gurtogg", width = 165 },
-      { value = "preboss", width = 165 },
-      { value = "settings", width = 130 },
-    },
-    [5] = {
-      requiredWidth = 650,
-      { value = "raid", width = 145 },
-      { value = "gurtogg", width = 160 },
-      { value = "preboss", width = 155 },
-      { value = "settings", width = 125 },
-      { value = "rosterExport", width = 160 },
-    },
-  }
 
-  local function CompactAssignmentTabGroup(tabGroup)
-    if
-      not tabGroup
-      or tabGroup.merfinPlusSingleRowDisabled
-      or tabGroup.type ~= "TabGroup"
-    then
-      return false
-    end
-    local tabCount = #(tabGroup.tablist or {})
-    local layout = assignmentTabLayouts[tabCount]
-    if not layout then
-      return false
-    end
-    for index = 1, tabCount do
-      if
-        not tabGroup.tablist[index]
-        or tabGroup.tablist[index].value ~= layout[index].value
-      then
-        return false
-      end
-    end
 
-    -- Never compact from BuildTabs/OnWidthSet itself. AceGUI's OnWidthSet calls
-    -- BuildTabs, so changing layout dimensions in that callback chain can
-    -- recursively re-enter the container layout. At genuinely narrow widths,
-    -- leave the native (multi-row) layout untouched as the safe fallback.
-    local frameWidth = tabGroup.frame and tabGroup.frame:GetWidth() or 0
-    if frameWidth < layout.requiredWidth then
-      return false
-    end
-    if tabGroup.merfinPlusApplyingTabLayout then
-      return false
-    end
-    if not tabGroup.frame or not tabGroup.border or not tabGroup.border.SetPoint then
-      tabGroup.merfinPlusSingleRowDisabled = true
-      return false
-    end
-    for index = 1, tabCount do
-      local tab = tabGroup.tabs[index]
-      if not tab or not tab.ClearAllPoints or not tab.SetPoint or not tab.SetWidth then
-        tabGroup.merfinPlusSingleRowDisabled = true
-        return false
-      end
-    end
-    tabGroup.merfinPlusApplyingTabLayout = true
 
-    local compacted = pcall(function()
-      local overlap = 10
-      local availableWidth = frameWidth + overlap * (tabCount - 1)
-      local preferredWidth = 0
-      for index = 1, tabCount do
-        preferredWidth = preferredWidth + layout[index].width
-      end
-      local targetWidth = layout.fixedWidth and preferredWidth or math.min(availableWidth, preferredWidth)
-      local widthScale = targetWidth / preferredWidth
-      local remainingWidth = targetWidth
-      local previous
-      for index = 1, tabCount do
-        local tab = tabGroup.tabs[index]
-        local width
-        if index == tabCount then
-          width = remainingWidth
-        else
-          width = math.floor(layout[index].width * widthScale + 0.5)
-          remainingWidth = remainingWidth - width
-        end
-        tab:ClearAllPoints()
-        if previous then
-          tab:SetPoint("LEFT", previous, "RIGHT", -overlap, 0)
-        else
-          local hasTitle = tabGroup.titletext
-            and tabGroup.titletext:GetText()
-            and tabGroup.titletext:GetText() ~= ""
-          tab:SetPoint("TOPLEFT", tabGroup.frame, "TOPLEFT", 0, hasTitle and -14 or -7)
-        end
-        tab:SetWidth(width)
-        local tabText = tab.GetFontString and tab:GetFontString()
-        if tabText then
-          if tabText.SetWordWrap then tabText:SetWordWrap(false) end
-          if tabText.SetNonSpaceWrap then tabText:SetNonSpaceWrap(false) end
-        end
-        if tab.Middle then
-          tab.Middle:SetWidth(math.max(1, width - 40))
-        end
-        if tab.MiddleDisabled then
-          tab.MiddleDisabled:SetWidth(math.max(1, width - 40))
-        end
-        if tab.HighlightTexture then
-          tab.HighlightTexture:SetWidth(width)
-        end
-        previous = tab
-      end
 
-      local hasTitle = tabGroup.titletext
-        and tabGroup.titletext:GetText()
-        and tabGroup.titletext:GetText() ~= ""
-      tabGroup.borderoffset = (hasTitle and 17 or 10) + 20
-      tabGroup.border:SetPoint("TOPLEFT", 1, -tabGroup.borderoffset)
-    end)
-    tabGroup.merfinPlusApplyingTabLayout = false
-    if not compacted then
-      -- Disable only this optional compaction. AceGUI's already-rendered native
-      -- tabs remain the fallback and no retry loop can be entered.
-      tabGroup.merfinPlusSingleRowDisabled = true
-    end
-    return compacted
-  end
 
-  local function KeepAssignmentTabsOnOneRow(container)
-    local function FindTabGroup(widget)
-      for _, child in ipairs(widget and widget.children or {}) do
-        if child.type == "TabGroup" then
-          local values = {}
-          for _, tab in ipairs(child.tabs or {}) do
-            values[tab.value] = true
-          end
-          if values.raid and values.gurtogg and values.settings then
-            return child
-          end
-        end
-        local nested = FindTabGroup(child)
-        if nested then
-          return nested
-        end
-      end
-    end
 
-    local tabGroup = FindTabGroup(container)
-    if not tabGroup then
-      return
-    end
-
-    local function ScheduleCompact()
-      tabGroup.merfinPlusTabLayoutGeneration = (tabGroup.merfinPlusTabLayoutGeneration or 0) + 1
-      local generation = tabGroup.merfinPlusTabLayoutGeneration
-      local apply = function()
-        if generation ~= tabGroup.merfinPlusTabLayoutGeneration then
-          return
-        end
-        CompactAssignmentTabGroup(tabGroup)
-      end
-      if C_Timer and C_Timer.After then
-        -- Run after AceGUI's own one-frame BuildTabsOnUpdate pass.
-        C_Timer.After(0.01, apply)
-      end
-    end
-
-    if not tabGroup.merfinPlusSingleRowSizeHooked then
-      tabGroup.frame:HookScript("OnSizeChanged", function()
-        if not tabGroup.merfinPlusApplyingTabLayout then
-          ScheduleCompact()
-        end
-      end)
-      tabGroup.merfinPlusSingleRowSizeHooked = true
-    end
-    ScheduleCompact()
-  end
-
-  function MerfinPlus:SaveAssignmentOptionsViewState()
+  function MerfinPlus:SaveOptionsViewState()
     local viewState = GetStoredViewState()
     -- AceConfig's status table is rebuilt during a locale refresh and can
     -- briefly report its first group. The selected navigation widget is the
@@ -2179,13 +2397,7 @@ function MerfinPlus:SetupOptions()
     if selectedMain and sectionsByKey[selectedMain] then
       viewState.activeMainNav = selectedMain
     end
-    if assignmentsOptions then
-      local assignmentStatus = aceConfigDialog:GetStatusTable(standaloneOptionsName, { "assignments" })
-      local selectedTab = assignmentStatus and assignmentStatus.groups and assignmentStatus.groups.selected
-      if validAssignmentTabs[selectedTab] then
-        viewState.activeAssignmentsTab = selectedTab
-      end
-    end
+
     if raidCooldownOptions then
       local raidCooldownStatus = aceConfigDialog:GetStatusTable(
         standaloneOptionsName,
@@ -2201,14 +2413,14 @@ function MerfinPlus:SetupOptions()
   end
 
   local standaloneFrame = GetStandaloneFrame()
-  standaloneFrame.AceContainer.merfinPlusRefreshTabLayout = KeepAssignmentTabsOnOneRow
+
   if not standaloneFrame.merfinPlusViewStateHooked then
     standaloneFrame:HookScript("OnHide", function()
-      MerfinPlus:SaveAssignmentOptionsViewState()
+      MerfinPlus:SaveOptionsViewState()
     end)
     standaloneFrame.merfinPlusViewStateHooked = true
   end
-  self:RegisterEvent("PLAYER_LOGOUT", "SaveAssignmentOptionsViewState")
+  self:RegisterEvent("PLAYER_LOGOUT", "SaveOptionsViewState")
 
   -- Toggle standalone and optionally preselect section/subtab
   function MerfinPlus:ToggleStandalone(which, sub)
@@ -2221,7 +2433,7 @@ function MerfinPlus:SetupOptions()
     local viewState = GetStoredViewState()
 
     if frame:IsShown() and not which then
-      self:SaveAssignmentOptionsViewState()
+      self:SaveOptionsViewState()
       frame:Hide()
       return
     end
@@ -2236,12 +2448,7 @@ function MerfinPlus:SetupOptions()
       or defaultSectionKey
     viewState.activeMainNav = selectedKey
     ApplyStandaloneSectionBranding(frame, sectionsByKey[selectedKey])
-    if selectedKey == "assignments" then
-      if not validAssignmentTabs[sub] then
-        sub = validAssignmentTabs[viewState.activeAssignmentsTab] and viewState.activeAssignmentsTab or "raid"
-      end
-      viewState.activeAssignmentsTab = sub
-    elseif selectedKey == "raidCooldowns" then
+    if selectedKey == "raidCooldowns" then
       if not validRaidCooldownTabs[sub] then
         sub = validRaidCooldownTabs[viewState.activeRaidCooldownsTab]
           and viewState.activeRaidCooldownsTab
@@ -2250,7 +2457,7 @@ function MerfinPlus:SetupOptions()
       viewState.activeRaidCooldownsTab = sub
     end
     SetStandaloneNavigation(frame, optionSections, selectedKey, function(key)
-      MerfinPlus:SaveAssignmentOptionsViewState()
+      MerfinPlus:SaveOptionsViewState()
       GetStoredViewState().activeMainNav = key
       MerfinPlus:ToggleStandalone(key)
     end)
@@ -2262,9 +2469,7 @@ function MerfinPlus:SetupOptions()
         aceConfigDialog:SelectGroup(standaloneOptionsName, selectedKey, sub)
       end
       aceConfigDialog:Open(standaloneOptionsName, frame.AceContainer, selectedKey)
-      if selectedKey == "assignments" then
-        KeepAssignmentTabsOnOneRow(frame.AceContainer)
-      end
+
       self:ApplyLocalizedFontsToFrame(frame)
     else
       aceConfigDialog:Open(standaloneOptionsName, frame.AceContainer)
@@ -2292,14 +2497,14 @@ function MerfinPlus:SetupOptions()
   function MerfinPlus:RefreshUITheme()
     local frame = self.optionsStandaloneFrame
     local wasShown = frame and frame:IsShown()
-    if wasShown then self:SaveAssignmentOptionsViewState() end
+    if wasShown then self:SaveOptionsViewState() end
 
     RefreshStandaloneFrameTheme(frame)
     if self.RefreshReadyCheckTheme then self:RefreshReadyCheckTheme() end
     if self.RefreshReadyCheckPreviewWidgets then self:RefreshReadyCheckPreviewWidgets(true) end
     if self.RefreshRaidAutoMarkerTheme then self:RefreshRaidAutoMarkerTheme() end
-    if self.RefreshAssignmentWidgetTheme then self:RefreshAssignmentWidgetTheme() end
-    if self.RefreshBossPlanTheme then self:RefreshBossPlanTheme() end
+
+
     if self.RefreshCompanionBridgeTheme then self:RefreshCompanionBridgeTheme() end
 
     if not wasShown then return end
@@ -2307,10 +2512,7 @@ function MerfinPlus:SetupOptions()
     local selectedKey = sectionsByKey[viewState.activeMainNav]
       and viewState.activeMainNav or defaultSectionKey
     local sub
-    if selectedKey == "assignments" then
-      sub = validAssignmentTabs[viewState.activeAssignmentsTab]
-        and viewState.activeAssignmentsTab or "raid"
-    elseif selectedKey == "raidCooldowns" then
+    if selectedKey == "raidCooldowns" then
       sub = validRaidCooldownTabs[viewState.activeRaidCooldownsTab]
         and viewState.activeRaidCooldownsTab or "general"
     end
@@ -2336,7 +2538,7 @@ function MerfinPlus:SetupOptions()
     local frame = self.optionsStandaloneFrame
     local wasShown = frame and frame:IsShown()
     if wasShown then
-      self:SaveAssignmentOptionsViewState()
+      self:SaveOptionsViewState()
     end
 
     for _, root in pairs(self.merfinPlusLocalizationRoots or {}) do
@@ -2351,18 +2553,11 @@ function MerfinPlus:SetupOptions()
     if frame and frame.LanguageDropdown then
       RefreshLanguageDropdown(frame)
     end
-    if self.RefreshAssignmentWidgetLocale then
-      self:RefreshAssignmentWidgetLocale()
-    end
+
     if self.RefreshReadyCheckWindow then
       self:RefreshReadyCheckWindow()
     end
-    if StaticPopupDialogs.MERFINPLUS_DELETE_RECORDED_RAID then
-      StaticPopupDialogs.MERFINPLUS_DELETE_RECORDED_RAID.text =
-        self:T("Delete the selected recorded raid?\n\n%s")
-      StaticPopupDialogs.MERFINPLUS_DELETE_RECORDED_RAID.button1 = self:T("Delete")
-      StaticPopupDialogs.MERFINPLUS_DELETE_RECORDED_RAID.button2 = self:T("Cancel")
-    end
+
 
     local schemaValid, schemaError =
       self:ValidateLocalizedOptionsTrees(self.merfinPlusLocalizationRoots)
@@ -2372,9 +2567,7 @@ function MerfinPlus:SetupOptions()
     end
 
     aceConfigRegistry:NotifyChange(standaloneOptionsName)
-    if assignmentsOptions then
-      aceConfigRegistry:NotifyChange("MerfinPlus_Assignments")
-    end
+
     if wasShown then
       local viewState = GetStoredViewState()
       local selectedKey = sectionsByKey[viewState.activeMainNav] and viewState.activeMainNav or defaultSectionKey
@@ -2383,9 +2576,7 @@ function MerfinPlus:SetupOptions()
         MerfinPlus:ToggleStandalone(key)
       end)
       local selectedChild
-      if selectedKey == "assignments" then
-        selectedChild = viewState.activeAssignmentsTab
-      elseif selectedKey == "raidCooldowns" then
+      if selectedKey == "raidCooldowns" then
         selectedChild = viewState.activeRaidCooldownsTab
       end
       self:ToggleStandalone(selectedKey, selectedChild)
