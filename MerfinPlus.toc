@@ -1,7 +1,8 @@
 ## Interface: 20506
+# WOW_INTERFACE_TARGETS: tbc-test, tbc
 ## Title: MerfinPlus
 ## Author: Merfin
-## Version: 3.04
+## Version: 3.06
 ## X-Website: discord.gg/merfin
 ## X-Flavor: TBC
 ## Notes: Inserts Merfin media into LibSharedMedia's storage.

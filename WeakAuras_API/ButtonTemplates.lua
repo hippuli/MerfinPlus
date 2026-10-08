@@ -2,13 +2,32 @@ Merfin = Merfin or {}
 local expansion = math.floor(select(4, GetBuildInfo()) / 10000)
 
 local UnitAffectingCombat = UnitAffectingCombat
-local GetSpellInfo = GetSpellInfo
+local GetSpellInfo = GetSpellInfo or C_Spell.GetSpellName
 local SESSION_HIDE_EVENT = "MERFIN_REMINDER_SESSION_HIDE"
 
 local pendingCombatHiddenButtons = setmetatable({}, { __mode = "k" })
 local combatHiddenButtons = setmetatable({}, { __mode = "k" })
 local hookedGroups = setmetatable({}, { __mode = "k" })
 local syncPending = false
+
+-- Forever exposes the aura engine as ForeverAuras. Resolve it at call time
+-- because MerfinPlus can load before either aura addon has initialized.
+local function GetAuraEngine()
+  return _G.WeakAuras or _G.ForeverAuras
+end
+
+local function RegisterSecureClicks(button)
+  if _G.ForeverAuras then
+    -- Forever runs on the modern secure-action implementation. Register both
+    -- phases, but explicitly execute the protected action on button release.
+    button:RegisterForClicks("AnyDown", "AnyUp")
+    button:SetAttribute("useOnKeyDown", false)
+  elseif expansion == 2 or expansion == 3 or expansion == 5 then
+    button:RegisterForClicks("AnyUp", "AnyDown") -- TBC and WotLK are special
+  else
+    button:RegisterForClicks("AnyUp")
+  end
+end
 
 local function SyncCombatHiddenButtons()
   if InCombatLockdown() then return end
@@ -68,8 +87,10 @@ local function ScheduleCombatHiddenButtonSync()
 end
 
 local function HookAuraGroup(aura_env)
-  local data = WeakAuras.GetData(aura_env.id)
-  local group = data and data.parent and WeakAuras.GetRegion(data.parent)
+  local auraEngine = GetAuraEngine()
+  if not auraEngine then return end
+  local data = auraEngine.GetData(aura_env.id)
+  local group = data and data.parent and auraEngine.GetRegion(data.parent)
   if not group or type(group.PositionChildren) ~= "function" then return end
 
   local positionChildren = group.PositionChildren
@@ -80,7 +101,8 @@ local function HookAuraGroup(aura_env)
 end
 
 local SetClickAnimation = function(aura_env)
-  local r = WeakAuras.GetRegion(aura_env.id)
+  local auraEngine = GetAuraEngine()
+  local r = auraEngine and auraEngine.GetRegion(aura_env.id)
   if not r or not aura_env.button then
     return
   end
@@ -131,7 +153,8 @@ local function AddSessionHideButton(aura_env)
 
     closeButton:SetScript("OnClick", function()
       aura_env.sessionHidden = true
-      WeakAuras.ScanEvents(SESSION_HIDE_EVENT, aura_env.id)
+      local auraEngine = GetAuraEngine()
+      if auraEngine then auraEngine.ScanEvents(SESSION_HIDE_EVENT, aura_env.id) end
     end)
 
     aura_env.sessionHideButton = closeButton
@@ -145,15 +168,57 @@ end
 
 Merfin.AddSessionHideButton = AddSessionHideButton
 
+local function SendGroupChatMessage(message)
+  if _G.issecretvalue and _G.issecretvalue(message) then return end
+  if type(message) ~= "string" or not message:find("%S") then return end
+
+  local channel
+  if IsInRaid() then
+    channel = "RAID"
+  elseif IsInGroup() then
+    channel = "PARTY"
+  else
+    return
+  end
+  SendChatMessage(message, channel)
+end
+
+local function SetButtonAction(button, actionType, context, context2)
+  -- Remove the previous chat callback when reusing this button for another action.
+  button:SetScript("PostClick", nil)
+  if actionType == "chat message" then
+    -- Keep SecureActionButtonTemplate's OnClick handler intact. PostClick runs
+    -- after it; only the left-button release sends a message on Forever.
+    button:SetAttribute("type", nil)
+    button:SetScript("PostClick", function(_, mouseButton, down)
+      if mouseButton == "LeftButton" and not down then
+        SendGroupChatMessage(context)
+      end
+    end)
+    return
+  end
+
+  button:SetAttribute("type", actionType)
+  if actionType == "macro" then
+    button:SetAttribute("macrotext1", context)
+  elseif actionType == "item" then
+    button:SetAttribute("item", "item:" .. context)
+  elseif actionType == "spell" then
+    local spell = (context2 and select(1, GetSpellInfo(context))) or context
+    button:SetAttribute("spell", spell)
+  end
+end
+
 local SetButtonTemplate = function(aura_env, buttonName, type, context, context2)
-  if WeakAuras.IsOptionsOpen() then
+  local auraEngine = GetAuraEngine()
+  if not auraEngine or auraEngine.IsOptionsOpen() then
     return
   end
   if UnitAffectingCombat("player") then
     return
   end
 
-  local region = WeakAuras.GetRegion(aura_env.id)
+  local region = auraEngine.GetRegion(aura_env.id)
   if not region then return end
 
   if not aura_env.button then
@@ -163,24 +228,13 @@ local SetButtonTemplate = function(aura_env, buttonName, type, context, context2
   SetClickAnimation(aura_env)
   aura_env.button:SetAllPoints()
 
-  if expansion == 2 or expansion == 3 or expansion == 5 then
-    aura_env.button:RegisterForClicks("AnyUp", "AnyDown") -- TBC and WotLK are special
-  else
-    aura_env.button:RegisterForClicks("AnyUp")
-  end
-  aura_env.button:SetAttribute("type", type)
-  if type == "macro" then
-    aura_env.button:SetAttribute("macrotext1", context)
-  elseif type == "item" then
-    aura_env.button:SetAttribute("item", "item:" .. context)
-  elseif type == "spell" then
-    local spell = (context2 and select(1, GetSpellInfo(context))) or context
-    aura_env.button:SetAttribute("spell", spell)
-  end
+  RegisterSecureClicks(aura_env.button)
+  SetButtonAction(aura_env.button, type, context, context2)
 end
 
 local function SetCombatHiddenButtonTemplate(aura_env, buttonName, type, context, context2)
-  if WeakAuras.IsOptionsOpen() then return end
+  local auraEngine = GetAuraEngine()
+  if not auraEngine or auraEngine.IsOptionsOpen() then return end
 
   if UnitAffectingCombat("player") or InCombatLockdown() then
     local args = pendingCombatHiddenButtons[aura_env]
@@ -223,21 +277,9 @@ local function SetCombatHiddenButtonTemplate(aura_env, buttonName, type, context
   local button = state.button
   SetClickAnimation(aura_env)
 
-  if expansion == 2 or expansion == 3 or expansion == 5 then
-    button:RegisterForClicks("AnyUp", "AnyDown") -- TBC and WotLK are special
-  else
-    button:RegisterForClicks("AnyUp")
-  end
+  RegisterSecureClicks(button)
 
-  button:SetAttribute("type", type)
-  if type == "macro" then
-    button:SetAttribute("macrotext1", context)
-  elseif type == "item" then
-    button:SetAttribute("item", "item:" .. context)
-  elseif type == "spell" then
-    local spell = (context2 and select(1, GetSpellInfo(context))) or context
-    button:SetAttribute("spell", spell)
-  end
+  SetButtonAction(button, type, context, context2)
 
   if state.region ~= region then
     state.region = region
@@ -284,7 +326,9 @@ Merfin.REMINDER_SESSION_HIDE_EVENT = SESSION_HIDE_EVENT
 -- Sets Tooltip
 Merfin.SetButtonTooltipItem = function(aura_env, buttonName, itemId)
   if not aura_env.button then
-    local r = WeakAuras.GetRegion(aura_env.id)
+    local auraEngine = GetAuraEngine()
+    local r = auraEngine and auraEngine.GetRegion(aura_env.id)
+    if not r then return end
     aura_env.button = CreateFrame("Button", buttonName, r, "SecureActionButtonTemplate")
   end
 
@@ -298,7 +342,8 @@ Merfin.SetButtonTooltipItem = function(aura_env, buttonName, itemId)
   end)
 
   aura_env.button:SetScript("OnLeave", function(self)
-    local r = WeakAuras.GetRegion(aura_env.id)
+    local auraEngine = GetAuraEngine()
+    local r = auraEngine and auraEngine.GetRegion(aura_env.id)
     if r then
       r:SetAlpha(1)
     end

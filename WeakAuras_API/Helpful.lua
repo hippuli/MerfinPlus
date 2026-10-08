@@ -225,7 +225,7 @@ Merfin.InsufficientResources = function(spellID)
   return not (maxRankID and Merfin.HasEnoughManaForSpell(maxRankID))
 end
 
-do
+if Merfin.IsTBC() then
   local f = CreateFrame("Frame")
   f:RegisterEvent("PLAYER_LOGIN")
   f:RegisterEvent("SPELLS_CHANGED")
